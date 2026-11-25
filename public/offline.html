@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Offline · Prima Management</title>
+    <style>
+        :root { --bg: #f6f5fb; --ink: #1c1830; --muted: #6b6780; --brand: #6d28d9; }
+        @media (prefers-color-scheme: dark) { :root { --bg: #0f0d17; --ink: #eeeaf8; --muted: #9e98b4; --brand: #a78bfa; } }
+        body { margin: 0; min-height: 100dvh; display: grid; place-items: center; background: var(--bg); color: var(--ink);
+            font-family: system-ui, sans-serif; text-align: center; padding: 1rem; }
+        img { width: 64px; border-radius: 16px; }
+        p { color: var(--muted); }
+        button { margin-top: 1rem; border: 0; border-radius: 12px; padding: .75rem 1.25rem; font-weight: 600;
+            background: var(--brand); color: var(--bg); font-size: 1rem; }
+    </style>
+</head>
+<body>
+    <div>
+        <img src="/icons/icon-192.png" alt="">
+        <h1>Kamu sedang offline</h1>
+        <p>Halaman Fokus tetap bisa dibuka: timer berjalan dan sesi yang kamu catat akan dikirim otomatis saat online.</p>
+        <p><a href="/fokus" style="color: var(--brand); font-weight: 600;">Buka halaman Fokus →</a></p>
+        <button onclick="location.reload()">Coba lagi</button>
+    </div>
+</body>
+</html>
