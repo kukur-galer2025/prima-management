@@ -1,6 +1,8 @@
 <?php
 
+use App\Models\JournalEntry;
 use App\Models\StudySession;
+use App\Services\MoodInsights;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
@@ -195,6 +197,13 @@ new #[Title('Statistik')] class extends Component
         })->all();
     }
 
+    /** Mood dari jurnal pada rentang yang dipilih, beserta hubungannya dengan fokus & kebiasaan. */
+    #[Computed]
+    public function mood(): array
+    {
+        return app(MoodInsights::class)->forUser(auth()->user(), $this->start(), today());
+    }
+
     #[Computed]
     public function tasksDone(): int
     {
@@ -343,6 +352,48 @@ new #[Title('Statistik')] class extends Component
                 </button>
             @endforeach
         </div>
+    </section>
+
+    {{-- Mood dari jurnal --}}
+    @php $mood = $this->mood; @endphp
+    <section class="card">
+        <div class="mb-3 flex items-start justify-between gap-2">
+            <div>
+                <h2 class="section-title">Mood & produktivitas</h2>
+                <p class="text-xs text-muted">Dari jurnal harian · {{ $mood['count'] }} entri</p>
+            </div>
+            <a href="{{ route('journal') }}" wire:navigate class="link shrink-0">Isi jurnal →</a>
+        </div>
+        @if ($mood['count'] === 0)
+            <p class="text-sm text-muted">Belum ada entri jurnal di rentang ini. Catat mood setiap hari untuk melihat polanya di sini.</p>
+        @else
+            {{-- Satu kotak per hari; tinggi = mood (1–5), kosong bila tidak ada entri --}}
+            <div class="flex h-16 items-end gap-px" role="img" aria-label="Mood harian">
+                @foreach (array_slice($mood['trend'], -90) as $day)
+                    <div class="flex-1 rounded-t-sm {{ $day['mood'] ? 'bg-brand' : 'bg-surface-2' }}"
+                        style="height: {{ $day['mood'] ? $day['mood'] * 20 : 6 }}%; opacity: {{ $day['mood'] ? 0.35 + $day['mood'] * 0.13 : 1 }}"
+                        title="{{ \Carbon\CarbonImmutable::parse($day['date'])->translatedFormat('D, d M') }}{{ $day['mood'] ? ': '.JournalEntry::MOODS[$day['mood']]['label'] : ': tidak ada entri' }}"></div>
+                @endforeach
+            </div>
+            <div class="mt-3 grid gap-2 sm:grid-cols-2">
+                <div class="rounded-2xl bg-surface-2 p-3">
+                    <p class="text-xs font-semibold text-muted">Rata-rata mood</p>
+                    <p class="mt-0.5 text-lg font-extrabold">{{ JournalEntry::emojiFor($mood['average']) }} {{ number_format($mood['average'], 1, ',', '.') }}</p>
+                </div>
+                @if ($mood['focus'])
+                    <div class="rounded-2xl bg-surface-2 p-3">
+                        <p class="text-xs font-semibold text-muted">Mood saat fokus ≥ 1 jam vs tidak</p>
+                        <p class="mt-0.5 text-lg font-extrabold">{{ number_format($mood['focus']['with'], 1, ',', '.') }} <span class="text-sm font-semibold text-muted">vs {{ number_format($mood['focus']['without'], 1, ',', '.') }}</span></p>
+                    </div>
+                @endif
+                @if ($mood['habits'])
+                    <div class="rounded-2xl bg-surface-2 p-3">
+                        <p class="text-xs font-semibold text-muted">Mood saat kebiasaan beres vs tidak</p>
+                        <p class="mt-0.5 text-lg font-extrabold">{{ number_format($mood['habits']['with'], 1, ',', '.') }} <span class="text-sm font-semibold text-muted">vs {{ number_format($mood['habits']['without'], 1, ',', '.') }}</span></p>
+                    </div>
+                @endif
+            </div>
+        @endif
     </section>
 
     <section class="grid grid-cols-2 gap-3">

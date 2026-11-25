@@ -10,14 +10,26 @@
         ],
         'Kehidupan' => [
             ['route' => 'habits', 'match' => 'habits', 'label' => 'Kebiasaan', 'icon' => 'repeat'],
-            ['route' => 'finance', 'match' => 'finance', 'label' => 'Keuangan', 'icon' => 'wallet'],
+            ['route' => 'journal', 'match' => 'journal', 'label' => 'Jurnal', 'icon' => 'book'],
             ['route' => 'notes', 'match' => 'notes', 'label' => 'Catatan', 'icon' => 'note'],
+        ],
+        'Uang' => [
+            ['route' => 'finance', 'match' => 'finance', 'label' => 'Keuangan', 'icon' => 'wallet'],
+            ['route' => 'savings', 'match' => 'savings', 'label' => 'Tabungan', 'icon' => 'piggy'],
+            ['route' => 'debts', 'match' => 'debts', 'label' => 'Utang & piutang', 'icon' => 'handshake'],
         ],
         'Wawasan' => [
             ['route' => 'stats', 'match' => 'stats', 'label' => 'Statistik', 'icon' => 'chart'],
             ['route' => 'review', 'match' => 'review', 'label' => 'Review mingguan', 'icon' => 'sparkle'],
+            ['route' => 'groups', 'match' => 'groups', 'label' => 'Grup', 'icon' => 'users'],
         ],
     ];
+
+    if (auth()->user()->is_admin) {
+        $groups['Pengelola'] = [
+            ['route' => 'admin', 'match' => 'admin', 'label' => 'Admin', 'icon' => 'shield'],
+        ];
+    }
 
     // Navigasi bawah HP hanya muat 5 item; sisanya ada di halaman "Lainnya".
     $mobileNav = [
@@ -25,7 +37,7 @@
         $groups['Utama'][1],
         $groups['Utama'][2],
         $groups['Utama'][3],
-        ['route' => 'menu', 'match' => ['menu', 'schedule', 'calendar', 'habits', 'finance', 'notes', 'stats', 'review', 'account'], 'label' => 'Lainnya', 'icon' => 'grid'],
+        ['route' => 'menu', 'match' => ['menu', 'schedule', 'calendar', 'habits', 'journal', 'finance', 'savings', 'debts', 'notes', 'stats', 'review', 'groups', 'account', 'admin'], 'label' => 'Lainnya', 'icon' => 'grid'],
     ];
 
     $user = auth()->user();

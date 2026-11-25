@@ -24,6 +24,9 @@ new #[Title('Kebiasaan')] class extends Component
     /** @var array<int, int|string> */
     public array $days = Habit::EVERY_DAY;
 
+    /** Jam pengingat HH:MM, kosong = tanpa pengingat. */
+    public ?string $remind_at = null;
+
     /** Kebiasaan yang riwayat setahunnya sedang dibuka. */
     public ?int $expandedHabit = null;
 
@@ -89,6 +92,7 @@ new #[Title('Kebiasaan')] class extends Component
         $this->icon = (string) $habit->icon;
         $this->color = $habit->color;
         $this->days = array_map('intval', $habit->days);
+        $this->remind_at = $habit->remind_at;
         $this->showForm = true;
     }
 
@@ -120,6 +124,7 @@ new #[Title('Kebiasaan')] class extends Component
             'color' => ['required', 'regex:/^#[0-9a-fA-F]{6}$/'],
             'days' => ['required', 'array', 'min:1'],
             'days.*' => ['integer', 'between:1,7'],
+            'remind_at' => ['nullable', 'date_format:H:i'],
         ], ['days.required' => 'Pilih minimal satu hari.', 'days.min' => 'Pilih minimal satu hari.'], ['name' => 'nama kebiasaan']);
 
         $attributes = [
@@ -127,6 +132,7 @@ new #[Title('Kebiasaan')] class extends Component
             'icon' => $validated['icon'] ?: null,
             'color' => $validated['color'],
             'days' => collect($validated['days'])->map(fn ($day) => (int) $day)->unique()->sort()->values()->all(),
+            'remind_at' => $validated['remind_at'] ?: null,
         ];
 
         if ($this->editingId) {
@@ -150,7 +156,7 @@ new #[Title('Kebiasaan')] class extends Component
     private function resetForm(): void
     {
         $this->resetValidation();
-        $this->reset(['editingId', 'name', 'icon', 'color', 'days']);
+        $this->reset(['editingId', 'name', 'icon', 'color', 'days', 'remind_at']);
     }
 };
 ?>
@@ -181,7 +187,7 @@ new #[Title('Kebiasaan')] class extends Component
                 <div class="mb-3 flex items-start justify-between gap-3">
                     <button class="min-w-0 text-left" wire:click="openEdit({{ $habit->id }})">
                         <p class="truncate font-bold">{{ $habit->label() }}</p>
-                        <p class="text-xs text-muted">{{ $habit->scheduleLabel() }}{{ is_null($rate) ? '' : ' · '.$rate.'% dalam 30 hari' }}</p>
+                        <p class="text-xs text-muted">{{ $habit->scheduleLabel() }}{{ $habit->remind_at ? ' · ⏰ '.$habit->remind_at : '' }}{{ is_null($rate) ? '' : ' · '.$rate.'% dalam 30 hari' }}</p>
                     </button>
                     <span @class(['flex shrink-0 items-center gap-1 text-sm font-bold', 'text-muted' => $streak === 0])>
                         <x-icon name="flame" @class(['size-4', 'text-orange-500' => $streak > 0]) /> {{ $streak }}
@@ -265,6 +271,18 @@ new #[Title('Kebiasaan')] class extends Component
                     <button type="button" class="chip bg-surface-2 px-3 py-1 text-muted hover:text-ink" wire:click="setDays([6,7])">Akhir pekan</button>
                 </div>
                 @error('days') <p class="error">{{ $message }}</p> @enderror
+            </div>
+
+            <div>
+                <label class="label" for="habit-remind">Ingatkan jam (opsional)</label>
+                <div class="flex items-center gap-2">
+                    <input id="habit-remind" type="time" wire:model="remind_at" class="input w-36">
+                    @if ($remind_at)
+                        <button type="button" class="text-xs font-bold text-muted hover:text-ink" wire:click="$set('remind_at', null)">Hapus</button>
+                    @endif
+                </div>
+                <p class="mt-1 text-xs text-muted">Dikirim lewat notifikasi/Telegram di hari terjadwal, kalau belum dicentang.</p>
+                @error('remind_at') <p class="error">{{ $message }}</p> @enderror
             </div>
 
             <div>

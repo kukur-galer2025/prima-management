@@ -1,0 +1,5 @@
+@extends('errors.layout')
+@section('code', '503')
+@section('title', 'Sedang diperbarui')
+@section('message', 'Prima Management kembali dalam beberapa saat.')
+@section('action', 'Coba lagi')

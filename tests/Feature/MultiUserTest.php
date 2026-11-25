@@ -5,85 +5,26 @@ namespace Tests\Feature;
 use App\Models\Goal;
 use App\Models\Note;
 use App\Models\User;
-use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\URL;
 use Livewire\Livewire;
 use Tests\TestCase;
 
-class RegistrationTest extends TestCase
+class MultiUserTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_new_user_can_register_and_must_verify_email(): void
+    public function test_self_registration_and_email_verification_routes_are_gone(): void
     {
-        Notification::fake();
-
-        $this->get(route('login'))->assertSee('Daftar gratis');
-        $this->get(route('register'))->assertOk()->assertSee('Buat akun Prima Management');
-
-        Livewire::test('pages::auth.register')
-            ->set('name', 'Sinta')
-            ->set('email', 'sinta@example.com')
-            ->set('password', 'rahasia123')
-            ->set('password_confirmation', 'rahasia123')
-            ->call('register')
-            ->assertHasNoErrors()
-            ->assertRedirect(route('verification.notice'));
-
-        $user = User::query()->where('email', 'sinta@example.com')->sole();
-        $this->assertNull($user->email_verified_at);
-        $this->assertAuthenticatedAs($user);
-        Notification::assertSentTo($user, VerifyEmail::class, fn (VerifyEmail $notification) => $notification->toMail($user)->subject === 'Verifikasi email akun Prima Management');
-
-        $this->actingAs($user)->get(route('dashboard'))->assertRedirect(route('verification.notice'));
-        $this->actingAs($user)->get(route('verification.notice'))->assertOk()->assertSee('sinta@example.com');
+        $this->get('/daftar')->assertNotFound();
+        $this->get('/verifikasi-email')->assertNotFound();
+        $this->get(route('login'))->assertOk()->assertDontSee('Daftar gratis')->assertSee('Minta admin');
     }
 
-    public function test_verification_link_unlocks_the_app(): void
+    public function test_unverified_users_can_still_use_the_app(): void
     {
-        $user = User::factory()->unverified()->create();
-        $url = URL::temporarySignedRoute('verification.verify', now()->addHour(), ['id' => $user->id, 'hash' => sha1($user->email)]);
-
-        $this->actingAs($user)->get($url)->assertRedirect(route('dashboard'));
-
-        $this->assertTrue($user->fresh()->hasVerifiedEmail());
-        $this->actingAs($user->fresh())->get(route('dashboard'))->assertOk();
-    }
-
-    public function test_tampered_verification_link_is_rejected(): void
-    {
-        $user = User::factory()->unverified()->create();
-        $url = URL::temporarySignedRoute('verification.verify', now()->addHour(), ['id' => $user->id, 'hash' => sha1('lain@example.com')]);
-
-        $this->actingAs($user)->get($url)->assertForbidden();
-        $this->assertFalse($user->fresh()->hasVerifiedEmail());
-    }
-
-    public function test_registration_validates_and_rejects_duplicate_email(): void
-    {
-        User::factory()->create(['email' => 'ada@example.com']);
-
-        Livewire::test('pages::auth.register')
-            ->set('name', '')
-            ->set('email', 'ada@example.com')
-            ->set('password', 'pendek')
-            ->set('password_confirmation', 'beda')
-            ->call('register')
-            ->assertHasErrors(['name', 'email', 'password']);
-
-        $this->assertSame(1, User::query()->count());
-    }
-
-    public function test_registration_can_be_closed(): void
-    {
-        config(['app.registration_enabled' => false]);
-
-        $this->get(route('register'))->assertNotFound();
-        $this->get(route('login'))->assertDontSee('Daftar gratis');
+        $this->actingAs(User::factory()->unverified()->create())->get(route('dashboard'))->assertOk();
     }
 
     public function test_users_only_see_their_own_data(): void
@@ -145,7 +86,9 @@ class RegistrationTest extends TestCase
         Storage::disk('local')->assertExists($pdf->path);
         $this->assertStringStartsWith($owner->attachmentDirectory().'/', $pdf->path);
 
-        $this->actingAs($owner)->get(route('attachments.show', $pdf))->assertOk()->assertDownload('soal.pdf');
+        $this->actingAs($owner)->get(route('attachments.show', $pdf))->assertOk()->assertDownload('soal.pdf')
+            ->assertHeaderMissing('ETag')
+            ->assertHeader('Cache-Control', 'max-age=0, no-store, private');
         $this->actingAs(User::factory()->create())->get(route('attachments.show', $pdf))->assertNotFound();
 
         $note->delete();

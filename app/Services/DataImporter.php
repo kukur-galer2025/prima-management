@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\StudySession;
 use App\Models\User;
+use App\Models\Wallet;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -16,7 +17,10 @@ use InvalidArgumentException;
  */
 class DataImporter
 {
-    private const SECTIONS = ['goals', 'study_sessions', 'schedule_slots', 'tasks', 'habits', 'transactions', 'recurring_transactions', 'budgets', 'notes', 'weekly_reviews'];
+    private const SECTIONS = ['goals', 'study_sessions', 'schedule_slots', 'tasks', 'habits', 'wallets', 'wallet_transfers', 'transactions', 'recurring_transactions', 'budgets', 'savings_goals', 'debts', 'notes', 'weekly_reviews', 'journal_entries'];
+
+    /** @var array<int, int> */
+    private array $walletIds = [];
 
     /** @var array<int, int> */
     private array $goalIds = [];
@@ -37,7 +41,7 @@ class DataImporter
             throw new InvalidArgumentException('File ini bukan ekspor Prima Management.');
         }
 
-        $this->goalIds = $this->topicIds = $this->recurringIds = [];
+        $this->goalIds = $this->topicIds = $this->recurringIds = $this->walletIds = [];
 
         return DB::transaction(function () use ($user, $data, $replace) {
             if ($replace) {
@@ -111,7 +115,7 @@ class DataImporter
             }
 
             foreach ($this->rows($data, 'tasks') as $row) {
-                $user->tasks()->create([
+                $task = $user->tasks()->create([
                     'goal_id' => $this->goalIds[(int) ($row['goal_id'] ?? 0)] ?? null,
                     'title' => (string) ($row['title'] ?? 'Tugas'),
                     'notes' => $row['notes'] ?? null,
@@ -121,7 +125,19 @@ class DataImporter
                     'recurrence' => $row['recurrence'] ?? null,
                     'is_done' => (bool) ($row['is_done'] ?? false),
                     'done_at' => $this->dateTime($row['done_at'] ?? null),
+                    'started_at' => $this->dateTime($row['started_at'] ?? null),
+                    'position' => max(0, (int) ($row['position'] ?? 0)),
                 ]);
+
+                foreach ((array) ($row['items'] ?? []) as $item) {
+                    if (is_array($item) && filled($item['title'] ?? null)) {
+                        $task->items()->create([
+                            'title' => mb_substr((string) $item['title'], 0, 200),
+                            'is_done' => (bool) ($item['is_done'] ?? false),
+                            'position' => max(0, (int) ($item['position'] ?? 0)),
+                        ]);
+                    }
+                }
                 $counts['tasks']++;
             }
 
@@ -131,6 +147,7 @@ class DataImporter
                     'icon' => $row['icon'] ?? null,
                     'color' => $row['color'] ?? '#059669',
                     'days' => array_values(array_filter(array_map('intval', (array) ($row['days'] ?? [1, 2, 3, 4, 5, 6, 7])), fn (int $day) => $day >= 1 && $day <= 7)),
+                    'remind_at' => preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', (string) ($row['remind_at'] ?? '')) ? $row['remind_at'] : null,
                 ]);
 
                 if (! empty($row['created_at'])) {
@@ -145,8 +162,38 @@ class DataImporter
                 $counts['habits']++;
             }
 
+            foreach ($this->rows($data, 'wallets') as $row) {
+                $wallet = $user->wallets()->create([
+                    'name' => mb_substr((string) ($row['name'] ?? 'Dompet'), 0, 50),
+                    'type' => array_key_exists($row['type'] ?? '', Wallet::TYPES) ? $row['type'] : 'other',
+                    'opening_balance' => (int) ($row['opening_balance'] ?? 0),
+                    'position' => max(0, (int) ($row['position'] ?? 0)),
+                ]);
+                $this->walletIds[(int) ($row['id'] ?? 0)] = $wallet->id;
+                $counts['wallets']++;
+            }
+
+            foreach ($this->rows($data, 'wallet_transfers') as $row) {
+                $from = $this->walletIds[(int) ($row['from_wallet_id'] ?? 0)] ?? null;
+                $to = $this->walletIds[(int) ($row['to_wallet_id'] ?? 0)] ?? null;
+
+                if (! $from || ! $to || $from === $to) {
+                    continue;
+                }
+
+                $user->walletTransfers()->create([
+                    'from_wallet_id' => $from,
+                    'to_wallet_id' => $to,
+                    'amount' => max(1, (int) ($row['amount'] ?? 1)),
+                    'transferred_on' => $this->date($row['transferred_on'] ?? null) ?? today()->toDateString(),
+                    'notes' => $row['notes'] ?? null,
+                ]);
+                $counts['wallet_transfers']++;
+            }
+
             foreach ($this->rows($data, 'recurring_transactions') as $row) {
                 $recurring = $user->recurringTransactions()->create([
+                    'wallet_id' => $this->walletIds[(int) ($row['wallet_id'] ?? 0)] ?? null,
                     'type' => ($row['type'] ?? null) === 'income' ? 'income' : 'expense',
                     'amount' => max(1, (int) ($row['amount'] ?? 1)),
                     'category' => (string) ($row['category'] ?? 'Lainnya'),
@@ -160,6 +207,7 @@ class DataImporter
 
             foreach ($this->rows($data, 'transactions') as $row) {
                 $user->transactions()->create([
+                    'wallet_id' => $this->walletIds[(int) ($row['wallet_id'] ?? 0)] ?? null,
                     'recurring_transaction_id' => $this->recurringIds[(int) ($row['recurring_transaction_id'] ?? 0)] ?? null,
                     'type' => ($row['type'] ?? null) === 'income' ? 'income' : 'expense',
                     'amount' => max(1, (int) ($row['amount'] ?? 1)),
@@ -173,6 +221,62 @@ class DataImporter
             foreach ($this->rows($data, 'budgets') as $row) {
                 $user->budgets()->updateOrCreate(['category' => (string) ($row['category'] ?? 'Lainnya')], ['amount' => max(1, (int) ($row['amount'] ?? 1))]);
                 $counts['budgets']++;
+            }
+
+            foreach ($this->rows($data, 'savings_goals') as $row) {
+                $goal = $user->savingsGoals()->create([
+                    'name' => mb_substr((string) ($row['name'] ?? 'Tabungan'), 0, 80),
+                    'emoji' => isset($row['emoji']) ? mb_substr((string) $row['emoji'], 0, 16) : null,
+                    'target_amount' => max(1, (int) ($row['target_amount'] ?? 1)),
+                    'deadline' => $this->date($row['deadline'] ?? null),
+                ]);
+
+                foreach ($this->nested($row, 'deposits') as $deposit) {
+                    $goal->deposits()->create([
+                        'wallet_id' => $this->walletIds[(int) ($deposit['wallet_id'] ?? 0)] ?? null,
+                        'amount' => (int) ($deposit['amount'] ?? 0),
+                        'deposited_on' => $this->date($deposit['deposited_on'] ?? null) ?? today()->toDateString(),
+                        'notes' => $deposit['notes'] ?? null,
+                    ]);
+                }
+                $counts['savings_goals']++;
+            }
+
+            foreach ($this->rows($data, 'debts') as $row) {
+                $debt = $user->debts()->create([
+                    'wallet_id' => $this->walletIds[(int) ($row['wallet_id'] ?? 0)] ?? null,
+                    'direction' => ($row['direction'] ?? null) === 'receivable' ? 'receivable' : 'payable',
+                    'person' => mb_substr((string) ($row['person'] ?? '-'), 0, 80),
+                    'amount' => max(1, (int) ($row['amount'] ?? 1)),
+                    'started_on' => $this->date($row['started_on'] ?? null) ?? today()->toDateString(),
+                    'due_on' => $this->date($row['due_on'] ?? null),
+                    'notes' => $row['notes'] ?? null,
+                ]);
+
+                foreach ($this->nested($row, 'payments') as $payment) {
+                    $debt->payments()->create([
+                        'wallet_id' => $this->walletIds[(int) ($payment['wallet_id'] ?? 0)] ?? null,
+                        'amount' => max(1, (int) ($payment['amount'] ?? 1)),
+                        'paid_on' => $this->date($payment['paid_on'] ?? null) ?? today()->toDateString(),
+                        'notes' => $payment['notes'] ?? null,
+                    ]);
+                }
+
+                $debt->syncSettlement();
+                $counts['debts']++;
+            }
+
+            foreach ($this->rows($data, 'journal_entries') as $row) {
+                $date = $this->date($row['entry_on'] ?? null);
+                $mood = (int) ($row['mood'] ?? 0);
+
+                if (! $date || $mood < 1 || $mood > 5) {
+                    continue;
+                }
+
+                $user->journalEntries()->whereDate('entry_on', $date)->delete();
+                $user->journalEntries()->create(['entry_on' => $date, 'mood' => $mood, 'content' => $row['content'] ?? null]);
+                $counts['journal_entries']++;
             }
 
             foreach ($this->rows($data, 'notes') as $row) {
@@ -223,8 +327,23 @@ class DataImporter
         $user->transactions()->delete();
         $user->recurringTransactions()->delete();
         $user->budgets()->delete();
-        $user->notes()->delete();
+        $user->savingsGoals()->delete();
+        $user->debts()->delete();
+        $user->walletTransfers()->delete();
+        $user->wallets()->delete();
+        // Lewat model agar file lampiran ikut terhapus dari penyimpanan.
+        $user->notes()->get()->each->delete();
         $user->weeklyReviews()->delete();
+        $user->journalEntries()->delete();
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @return array<int, array<string, mixed>>
+     */
+    private function nested(array $row, string $key): array
+    {
+        return array_values(array_filter((array) ($row[$key] ?? []), 'is_array'));
     }
 
     /**

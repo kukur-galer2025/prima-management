@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -15,7 +16,25 @@ new #[Layout('layouts::guest')] #[Title('Lupa kata sandi')] class extends Compon
     {
         $this->validate(['email' => ['required', 'email']]);
 
-        $status = Password::sendResetLink(['email' => $this->email]);
+        // Batasi per IP agar form ini tidak dipakai untuk membanjiri kotak masuk orang lain.
+        $throttleKey = 'password-reset|'.request()->ip();
+
+        if (RateLimiter::tooManyAttempts($throttleKey, 5)) {
+            $this->addError('email', 'Terlalu banyak permintaan. Coba lagi dalam '.ceil(RateLimiter::availableIn($throttleKey) / 60).' menit.');
+
+            return;
+        }
+
+        RateLimiter::hit($throttleKey, 900);
+
+        try {
+            $status = Password::sendResetLink(['email' => $this->email]);
+        } catch (Throwable $exception) {
+            report($exception);
+            $this->addError('email', 'Email belum bisa dikirim. Coba lagi nanti atau hubungi admin.');
+
+            return;
+        }
 
         // Pesan sama untuk email terdaftar maupun tidak, agar tidak membocorkan daftar akun.
         if ($status === Password::RESET_THROTTLED) {

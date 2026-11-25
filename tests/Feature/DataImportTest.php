@@ -2,13 +2,18 @@
 
 namespace Tests\Feature;
 
+use App\Models\Debt;
 use App\Models\Goal;
 use App\Models\Habit;
+use App\Models\JournalEntry;
 use App\Models\Note;
+use App\Models\SavingsGoal;
 use App\Models\StudySession;
 use App\Models\Task;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Models\Wallet;
+use App\Services\DataExporter;
 use App\Services\DataImporter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -70,6 +75,43 @@ class DataImportTest extends TestCase
 
         // Data sumber tidak tersentuh.
         $this->assertSame(1, $source->studySessions()->count());
+    }
+
+    public function test_wallets_savings_debts_journal_and_checklists_round_trip(): void
+    {
+        $source = User::factory()->create();
+        $cash = Wallet::factory()->for($source)->create(['name' => 'Tunai', 'opening_balance' => 100000]);
+        $bank = Wallet::factory()->for($source)->create(['name' => 'BCA', 'type' => 'bank']);
+        $source->walletTransfers()->create(['from_wallet_id' => $cash->id, 'to_wallet_id' => $bank->id, 'amount' => 40000, 'transferred_on' => '2026-11-20']);
+        Transaction::factory()->for($source)->create(['wallet_id' => $bank->id, 'amount' => 10000, 'occurred_on' => '2026-11-21']);
+        $saving = SavingsGoal::factory()->for($source)->create(['name' => 'Laptop', 'target_amount' => 8000000]);
+        $saving->deposits()->create(['wallet_id' => $cash->id, 'amount' => 20000, 'deposited_on' => '2026-11-22']);
+        $debt = Debt::factory()->for($source)->create(['person' => 'Andi', 'amount' => 50000, 'wallet_id' => $bank->id]);
+        $debt->payments()->create(['amount' => 50000, 'paid_on' => '2026-11-23', 'wallet_id' => $bank->id]);
+        $debt->syncSettlement();
+        JournalEntry::factory()->for($source)->create(['entry_on' => '2026-11-24', 'mood' => 5, 'content' => 'Hari baik']);
+        $task = Task::factory()->for($source)->create(['title' => 'Daftar ulang', 'started_at' => '2026-11-24 08:00:00']);
+        $task->items()->create(['title' => 'Fotokopi', 'is_done' => true]);
+
+        $data = json_decode(app(DataExporter::class)->toJson($source), true);
+        $target = User::factory()->create();
+        $counts = app(DataImporter::class)->import($target, $data);
+
+        $this->assertSame(2, $counts['wallets']);
+        $this->assertSame(Wallet::balancesFor($source)->values()->all(), Wallet::balancesFor($target)->values()->all());
+        $this->assertSame('BCA', $target->transactions()->sole()->wallet->name);
+        $this->assertSame(20000, $target->savingsGoals()->sole()->savedAmount());
+        $this->assertTrue($target->debts()->sole()->isSettled());
+        $this->assertSame('Hari baik', $target->journalEntries()->sole()->content);
+        $restoredTask = $target->tasks()->sole();
+        $this->assertSame('doing', $restoredTask->column());
+        $this->assertTrue($restoredTask->items()->sole()->is_done);
+
+        // Mode ganti menghapus dompet, tabungan, utang, dan jurnal lama sebelum memulihkan.
+        app(DataImporter::class)->import($target, $data, replace: true);
+        $this->assertSame(2, $target->wallets()->count());
+        $this->assertSame(1, $target->journalEntries()->count());
+        $this->assertSame(1, $target->debts()->count());
     }
 
     public function test_replace_mode_wipes_existing_data_first(): void

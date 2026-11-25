@@ -10,16 +10,21 @@ new #[Title('Lainnya')] class extends Component
      */
     public function items(): array
     {
-        return [
+        return array_values(array_filter([
             ['route' => 'schedule', 'icon' => 'calendar', 'label' => 'Jadwal', 'description' => 'Pola fokus mingguan & seberapa banyak yang terlaksana'],
             ['route' => 'calendar', 'icon' => 'calendar-grid', 'label' => 'Kalender', 'description' => 'Deadline, tugas, jadwal, dan fokus dalam satu bulan'],
             ['route' => 'review', 'icon' => 'sparkle', 'label' => 'Review mingguan', 'description' => 'Ringkasan otomatis & refleksi tiap minggu'],
             ['route' => 'habits', 'icon' => 'repeat', 'label' => 'Kebiasaan', 'description' => 'Rutinitas harian dengan streak'],
-            ['route' => 'finance', 'icon' => 'wallet', 'label' => 'Keuangan', 'description' => 'Pemasukan, pengeluaran, dan anggaran'],
+            ['route' => 'journal', 'icon' => 'book', 'label' => 'Jurnal', 'description' => 'Mood & satu kalimat tentang hari ini'],
+            ['route' => 'finance', 'icon' => 'wallet', 'label' => 'Keuangan', 'description' => 'Dompet, pemasukan, pengeluaran, dan anggaran'],
+            ['route' => 'savings', 'icon' => 'piggy', 'label' => 'Tabungan', 'description' => 'Menabung untuk tujuan tertentu'],
+            ['route' => 'debts', 'icon' => 'handshake', 'label' => 'Utang & piutang', 'description' => 'Pinjaman, cicilan, dan jatuh tempo'],
             ['route' => 'notes', 'icon' => 'note', 'label' => 'Catatan', 'description' => 'Ringkasan materi, ide, dan link'],
-            ['route' => 'stats', 'icon' => 'chart', 'label' => 'Statistik', 'description' => 'Tren fokus, tugas, dan kebiasaan'],
-            ['route' => 'account', 'icon' => 'user', 'label' => 'Akun', 'description' => 'Profil, notifikasi, target, dan ekspor data'],
-        ];
+            ['route' => 'groups', 'icon' => 'users', 'label' => 'Grup', 'description' => 'Papan fokus mingguan bersama teman'],
+            ['route' => 'stats', 'icon' => 'chart', 'label' => 'Statistik', 'description' => 'Tren fokus, tugas, kebiasaan, dan mood'],
+            ['route' => 'account', 'icon' => 'user', 'label' => 'Akun', 'description' => 'Profil, notifikasi, Telegram, dan ekspor data'],
+            auth()->user()->is_admin ? ['route' => 'admin', 'icon' => 'shield', 'label' => 'Admin', 'description' => 'Kelola akun pengguna'] : null,
+        ]));
     }
 };
 ?>

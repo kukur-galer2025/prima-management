@@ -92,7 +92,7 @@ class PlanningInsightsTest extends TestCase
         $user = User::factory()->create();
         Goal::factory()->for($user)->create();
 
-        $this->actingAs($user)->get(route('dashboard'))->assertSee('Mulai di sini')->assertSee('(1/6)');
+        $this->actingAs($user)->get(route('dashboard'))->assertSee('Mulai di sini')->assertSee('(1/7)');
 
         Livewire::actingAs($user)->test('pages::dashboard')->call('dismissOnboarding');
 

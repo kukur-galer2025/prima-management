@@ -3,14 +3,14 @@
 use App\Http\Controllers\CalendarFeedController;
 use App\Http\Controllers\NoteAttachmentController;
 use App\Http\Controllers\OfflineSessionSyncController;
-use Illuminate\Foundation\Auth\EmailVerificationRequest;
+use App\Http\Controllers\TelegramWebhookController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
+// Tidak ada pendaftaran mandiri: akun dibuat admin lewat panel /admin.
 Route::middleware('guest')->group(function () {
     Route::livewire('/login', 'pages::auth.login')->name('login');
-    Route::livewire('/daftar', 'pages::auth.register')->name('register');
     Route::livewire('/lupa-sandi', 'pages::auth.forgot-password')->name('password.request');
     Route::livewire('/reset-sandi/{token}', 'pages::auth.reset-password')->name('password.reset');
 });
@@ -21,16 +21,12 @@ Route::get('/kalender/feed/{token}.ics', CalendarFeedController::class)
     ->middleware('throttle:60,1')
     ->name('calendar.feed');
 
-// Bisa diakses sebelum email diverifikasi.
+// Update dari bot Telegram (pengingat); dilindungi secret token, bukan sesi login.
+Route::post('/telegram/webhook', TelegramWebhookController::class)
+    ->middleware('throttle:120,1')
+    ->name('telegram.webhook');
+
 Route::middleware('auth')->group(function () {
-    Route::livewire('/verifikasi-email', 'pages::auth.verify-email')->name('verification.notice');
-
-    Route::get('/verifikasi-email/{id}/{hash}', function (EmailVerificationRequest $request) {
-        $request->fulfill();
-
-        return redirect()->route('dashboard')->with('status', 'Email terverifikasi. Selamat datang!');
-    })->middleware(['signed', 'throttle:6,1'])->name('verification.verify');
-
     Route::post('/logout', function (Request $request) {
         Auth::logout();
         $request->session()->invalidate();
@@ -38,9 +34,7 @@ Route::middleware('auth')->group(function () {
 
         return redirect()->route('login');
     })->name('logout');
-});
 
-Route::middleware(['auth', 'verified'])->group(function () {
     Route::livewire('/', 'pages::dashboard')->name('dashboard');
     Route::livewire('/target', 'pages::goals.index')->name('goals.index');
     Route::livewire('/target/{goal}', 'pages::goals.show')->name('goals.show');
@@ -49,13 +43,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::livewire('/jadwal', 'pages::schedule')->name('schedule');
     Route::livewire('/tugas', 'pages::tasks')->name('tasks');
     Route::livewire('/kebiasaan', 'pages::habits')->name('habits');
+    Route::livewire('/jurnal', 'pages::journal')->name('journal');
     Route::livewire('/keuangan', 'pages::finance')->name('finance');
+    Route::livewire('/tabungan', 'pages::savings')->name('savings');
+    Route::livewire('/utang', 'pages::debts')->name('debts');
     Route::livewire('/catatan', 'pages::notes')->name('notes');
     Route::livewire('/statistik', 'pages::stats')->name('stats');
     Route::livewire('/kalender', 'pages::calendar')->name('calendar');
     Route::livewire('/review', 'pages::review')->name('review');
+    Route::livewire('/grup', 'pages::groups')->name('groups');
     Route::livewire('/akun', 'pages::account')->name('account');
     Route::livewire('/lainnya', 'pages::menu')->name('menu');
+    Route::livewire('/admin', 'pages::admin')->middleware('can:admin')->name('admin');
 
     Route::get('/lampiran/{attachment}', NoteAttachmentController::class)->middleware('throttle:120,1')->name('attachments.show');
 

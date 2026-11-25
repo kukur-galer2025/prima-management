@@ -2,6 +2,8 @@
 
 use App\Models\PushSubscription;
 use App\Models\StudySession;
+use App\Models\User;
+use App\Services\Telegram;
 use App\Services\DataExporter;
 use App\Services\DataImporter;
 use Illuminate\Support\Facades\Auth;
@@ -195,6 +197,37 @@ new #[Title('Akun')] class extends Component
         $this->dispatch('toast', message: 'Notifikasi tes dikirim');
     }
 
+    public ?string $telegramLink = null;
+
+    public function connectTelegram(): void
+    {
+        $this->telegramLink = app(Telegram::class)->linkUrl(auth()->user());
+    }
+
+    public function refreshTelegram(): void
+    {
+        if (auth()->user()->fresh()->hasTelegram()) {
+            $this->telegramLink = null;
+            $this->dispatch('toast', message: 'Telegram tersambung ✅');
+        }
+    }
+
+    public function disconnectTelegram(): void
+    {
+        auth()->user()->forceFill(['telegram_chat_id' => null, 'telegram_link_code' => null])->save();
+
+        $this->telegramLink = null;
+        $this->dispatch('toast', message: 'Telegram diputus');
+    }
+
+    public function sendTestTelegram(): void
+    {
+        $user = auth()->user();
+        $sent = app(Telegram::class)->sendMessage($user->telegram_chat_id, '<b>Tes pengingat</b>'."\n".'Pengingat Prima Management sudah berfungsi. 🎉', route('dashboard'));
+
+        $this->dispatch('toast', message: $sent ? 'Pesan tes dikirim ke Telegram' : 'Gagal mengirim. Coba sambungkan ulang.');
+    }
+
     public function exportJson(): StreamedResponse
     {
         $json = app(DataExporter::class)->toJson(auth()->user());
@@ -221,6 +254,13 @@ new #[Title('Akun')] class extends Component
         $this->validate(['delete_password' => ['required', 'current_password']], [], ['delete_password' => 'kata sandi']);
 
         $user = auth()->user();
+
+        if ($user->is_admin && User::query()->where('is_admin', true)->whereKeyNot($user->id)->doesntExist()) {
+            $this->addError('delete_password', 'Kamu satu-satunya admin. Jadikan pengguna lain admin dulu sebelum menghapus akun ini.');
+
+            return;
+        }
+
         Auth::logout();
         $user->deleteAccount();
         session()->invalidate();
@@ -339,7 +379,8 @@ new #[Title('Akun')] class extends Component
         </div>
         <ul class="mb-4 list-disc space-y-1 pl-5 text-sm text-muted">
             <li>{{ App\Services\Reminders::SLOT_LEAD_MINUTES }} menit sebelum slot jadwal dimulai</li>
-            <li>Ringkasan pagi (07.00): tugas hari ini & terlambat, kebiasaan, deadline ≤ 7 hari</li>
+            <li>Ringkasan pagi (07.00): tugas hari ini & terlambat, kebiasaan, deadline ≤ 7 hari, utang/piutang jatuh tempo</li>
+            <li>Ajakan mengisi jurnal (20.30) bila kamu memakai jurnal dan belum mengisinya hari itu</li>
         </ul>
 
         @if (! $webPush->isConfigured())
@@ -361,6 +402,33 @@ new #[Title('Akun')] class extends Component
                 </div>
             </template>
             <p class="mt-3 text-xs text-muted">{{ $this->deviceCount }} perangkat menerima notifikasi. Pengingat dikirim oleh scheduler (<code class="font-mono">php artisan schedule:work</code>, sudah termasuk di <code class="font-mono">composer run dev</code>).</p>
+        @endif
+    </section>
+
+    {{-- Telegram --}}
+    @php $telegram = app(Telegram::class); @endphp
+    <section class="card" @if ($telegramLink) wire:poll.5s="refreshTelegram" @endif>
+        <div class="mb-1 flex items-center gap-2">
+            <x-icon name="send" class="size-5 text-brand" />
+            <h2 class="font-bold">Pengingat lewat Telegram</h2>
+        </div>
+        <p class="mb-4 text-sm text-muted">Pengingat yang sama dengan notifikasi push, dikirim ke chat Telegram. Lebih andal di iPhone dan tidak perlu memasang aplikasi.</p>
+
+        @if (! $telegram->isConfigured())
+            <p class="rounded-xl bg-surface-2 p-3 text-sm text-muted">Bot Telegram belum diatur di server. Admin perlu mengisi <code class="font-mono text-ink">TELEGRAM_BOT_TOKEN</code> dan <code class="font-mono text-ink">TELEGRAM_BOT_USERNAME</code> di <code class="font-mono text-ink">.env</code>.</p>
+        @elseif (auth()->user()->hasTelegram())
+            <p class="mb-3 rounded-xl bg-success/10 p-3 text-sm font-semibold text-success">Tersambung ke {{ '@'.$telegram->botUsername() }} ✅</p>
+            <div class="flex gap-2">
+                <button type="button" class="btn btn-ghost flex-1" wire:click="sendTestTelegram">Kirim tes</button>
+                <button type="button" class="btn btn-ghost flex-1" wire:click="disconnectTelegram" wire:confirm="Berhenti menerima pengingat di Telegram?">Putuskan</button>
+            </div>
+        @elseif ($telegramLink)
+            <div class="space-y-3">
+                <a href="{{ $telegramLink }}" target="_blank" rel="noopener" class="btn btn-primary w-full"><x-icon name="send" class="size-4" /> Buka Telegram & tekan Start</a>
+                <p class="text-xs text-muted">Halaman ini otomatis memperbarui begitu bot menerima pesan Start-mu. Tautan hanya berlaku untuk akunmu, jangan dibagikan.</p>
+            </div>
+        @else
+            <button type="button" class="btn btn-primary w-full" wire:click="connectTelegram"><x-icon name="send" class="size-4" /> Sambungkan Telegram</button>
         @endif
     </section>
 

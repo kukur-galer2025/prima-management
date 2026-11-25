@@ -2,14 +2,18 @@
 
 namespace Tests\Feature;
 
+use App\Models\Debt;
 use App\Models\Goal;
 use App\Models\Habit;
+use App\Models\JournalEntry;
 use App\Models\Note;
+use App\Models\SavingsGoal;
 use App\Models\ScheduleSlot;
 use App\Models\StudySession;
 use App\Models\Task;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Models\Wallet;
 use Database\Seeders\StarterGoalsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -42,9 +46,28 @@ class PagesTest extends TestCase
     {
         $this->actingAs(User::factory()->create());
 
-        foreach (['dashboard', 'goals.index', 'study', 'schedule', 'tasks', 'habits', 'finance', 'notes', 'stats', 'account', 'menu', 'calendar', 'review'] as $route) {
+        foreach (['dashboard', 'goals.index', 'study', 'schedule', 'tasks', 'habits', 'journal', 'finance', 'savings', 'debts', 'notes', 'stats', 'account', 'menu', 'calendar', 'review', 'groups'] as $route) {
             $this->get(route($route))->assertOk();
         }
+    }
+
+    public function test_new_pages_render_with_data_for_admin(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $wallet = Wallet::factory()->for($admin)->create(['name' => 'Jago']);
+        SavingsGoal::factory()->for($admin)->create(['name' => 'Dana darurat', 'deadline' => today()->addMonths(3)]);
+        Debt::factory()->for($admin)->create(['person' => 'Rina', 'wallet_id' => $wallet->id, 'due_on' => today()]);
+        JournalEntry::factory()->for($admin)->create(['content' => 'Hari yang tenang']);
+
+        $this->actingAs($admin);
+
+        $this->get(route('finance'))->assertOk()->assertSee('Jago');
+        $this->get(route('savings'))->assertOk()->assertSee('Dana darurat')->assertSee('/bulan');
+        $this->get(route('debts'))->assertOk()->assertSee('Rina')->assertSee('Jatuh tempo hari ini');
+        $this->get(route('journal'))->assertOk()->assertSee('Hari yang tenang');
+        $this->get(route('admin'))->assertOk()->assertSee($admin->email);
+        $this->get(route('tasks', ['view' => 'board']))->assertOk()->assertSee('Dikerjakan');
+        $this->get(route('menu'))->assertOk()->assertSee('Tabungan')->assertSee('Admin');
     }
 
     public function test_guest_pages_render_with_theme_switcher(): void

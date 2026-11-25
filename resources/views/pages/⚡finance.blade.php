@@ -2,6 +2,8 @@
 
 use App\Models\RecurringTransaction;
 use App\Models\Transaction;
+use App\Models\Wallet;
+use App\Services\BudgetMonitor;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
@@ -16,7 +18,35 @@ new #[Title('Keuangan')] class extends Component
     #[Url]
     public string $month = '';
 
+    /** Filter dompet (null = semua dompet). */
+    #[Url(except: null)]
+    public ?int $wallet = null;
+
     public bool $showForm = false;
+
+    public int|string|null $wallet_id = null;
+
+    public bool $showWalletForm = false;
+
+    public ?int $walletId = null;
+
+    public string $walletName = '';
+
+    public string $walletType = 'cash';
+
+    public string $walletOpening = '';
+
+    public bool $showTransferForm = false;
+
+    public int|string|null $fromWalletId = null;
+
+    public int|string|null $toWalletId = null;
+
+    public string $transferAmount = '';
+
+    public string $transferDate = '';
+
+    public string $transferNotes = '';
 
     public ?int $editingId = null;
 
@@ -50,6 +80,166 @@ new #[Title('Keuangan')] class extends Component
 
         // Catat transaksi rutin yang jatuh tempo, juga bila scheduler sedang tidak berjalan.
         RecurringTransaction::postDueFor(auth()->user());
+
+        if ($this->wallet && ! auth()->user()->wallets()->whereKey($this->wallet)->exists()) {
+            $this->wallet = null;
+        }
+    }
+
+    #[Computed]
+    public function wallets(): Collection
+    {
+        return auth()->user()->wallets()->orderBy('position')->orderBy('id')->get();
+    }
+
+    /** @return Collection<int, int> */
+    #[Computed]
+    public function balances(): Collection
+    {
+        return Wallet::balancesFor(auth()->user());
+    }
+
+    #[Computed]
+    public function transfers(): Collection
+    {
+        return auth()->user()->walletTransfers()
+            ->with(['fromWallet', 'toWallet'])
+            ->whereDate('transferred_on', '>=', $this->period())
+            ->whereDate('transferred_on', '<=', $this->period()->endOfMonth())
+            ->when($this->wallet, fn ($query) => $query->where(fn ($query) => $query
+                ->where('from_wallet_id', $this->wallet)
+                ->orWhere('to_wallet_id', $this->wallet)))
+            ->orderByDesc('transferred_on')
+            ->orderByDesc('id')
+            ->get();
+    }
+
+    public function filterWallet(?int $walletId): void
+    {
+        $this->wallet = $this->wallet === $walletId ? null : $walletId;
+        unset($this->transactions, $this->transfers, $this->summary);
+    }
+
+    public function openWallet(?int $walletId = null): void
+    {
+        $this->resetValidation();
+        $this->reset(['walletId', 'walletName', 'walletType', 'walletOpening']);
+
+        if ($walletId) {
+            $wallet = auth()->user()->wallets()->findOrFail($walletId);
+            $this->walletId = $wallet->id;
+            $this->walletName = $wallet->name;
+            $this->walletType = $wallet->type;
+            $this->walletOpening = $wallet->opening_balance ? ($wallet->opening_balance < 0 ? '-' : '').number_format(abs($wallet->opening_balance), 0, ',', '.') : '';
+        }
+
+        $this->showWalletForm = true;
+    }
+
+    public function closeWalletForm(): void
+    {
+        $this->showWalletForm = false;
+    }
+
+    public function saveWallet(): void
+    {
+        // Saldo awal boleh negatif (mis. kartu kredit / paylater).
+        $negative = str_starts_with(trim($this->walletOpening), '-');
+        $this->walletOpening = (string) preg_replace('/\D/', '', $this->walletOpening);
+
+        $validated = $this->validate([
+            'walletName' => ['required', 'string', 'max:50'],
+            'walletType' => ['required', Rule::in(array_keys(Wallet::TYPES))],
+            'walletOpening' => ['nullable', 'integer', 'max:999999999999'],
+        ], [], ['walletName' => 'nama dompet', 'walletType' => 'jenis', 'walletOpening' => 'saldo awal']);
+
+        $attributes = [
+            'name' => trim($validated['walletName']),
+            'type' => $validated['walletType'],
+            'opening_balance' => ((int) $validated['walletOpening']) * ($negative ? -1 : 1),
+        ];
+
+        if ($this->walletId) {
+            auth()->user()->wallets()->findOrFail($this->walletId)->update($attributes);
+        } else {
+            $isFirstWallet = $this->wallets->isEmpty();
+            $wallet = auth()->user()->wallets()->create($attributes + ['position' => $this->wallets->count()]);
+
+            // Dompet pertama otomatis menampung transaksi lama yang belum punya dompet.
+            if ($isFirstWallet) {
+                auth()->user()->transactions()->whereNull('wallet_id')->update(['wallet_id' => $wallet->id]);
+                auth()->user()->recurringTransactions()->whereNull('wallet_id')->update(['wallet_id' => $wallet->id]);
+            }
+        }
+
+        unset($this->wallets, $this->balances);
+        $this->closeWalletForm();
+        $this->dispatch('toast', message: 'Dompet '.$attributes['name'].' disimpan');
+    }
+
+    public function deleteWallet(int $walletId): void
+    {
+        $wallet = auth()->user()->wallets()->findOrFail($walletId);
+        $wallet->delete();
+
+        if ($this->wallet === $walletId) {
+            $this->wallet = null;
+        }
+
+        unset($this->wallets, $this->balances, $this->transactions, $this->transfers);
+        $this->closeWalletForm();
+        $this->dispatch('toast', message: 'Dompet '.$wallet->name.' dihapus');
+    }
+
+    public function openTransfer(): void
+    {
+        $this->resetValidation();
+        $this->reset(['transferAmount', 'transferNotes']);
+        $this->fromWalletId = $this->wallet ?? $this->wallets->first()?->id;
+        $this->toWalletId = $this->wallets->firstWhere('id', '!=', $this->fromWalletId)?->id;
+        $this->transferDate = today()->toDateString();
+        $this->showTransferForm = true;
+    }
+
+    public function closeTransferForm(): void
+    {
+        $this->showTransferForm = false;
+    }
+
+    public function saveTransfer(): void
+    {
+        $this->transferAmount = (string) preg_replace('/\D/', '', $this->transferAmount);
+        $ownWallet = Rule::exists('wallets', 'id')->where('user_id', auth()->id());
+
+        $validated = $this->validate([
+            'fromWalletId' => ['required', $ownWallet],
+            'toWalletId' => ['required', 'different:fromWalletId', $ownWallet],
+            'transferAmount' => ['required', 'integer', 'min:1', 'max:999999999999'],
+            'transferDate' => ['required', 'date'],
+            'transferNotes' => ['nullable', 'string', 'max:255'],
+        ], ['toWalletId.different' => 'Dompet tujuan harus berbeda dari dompet asal.'], [
+            'fromWalletId' => 'dompet asal', 'toWalletId' => 'dompet tujuan', 'transferAmount' => 'nominal', 'transferDate' => 'tanggal',
+        ]);
+
+        auth()->user()->walletTransfers()->create([
+            'from_wallet_id' => (int) $validated['fromWalletId'],
+            'to_wallet_id' => (int) $validated['toWalletId'],
+            'amount' => (int) $validated['transferAmount'],
+            'transferred_on' => $validated['transferDate'],
+            'notes' => $validated['transferNotes'] ?: null,
+        ]);
+
+        unset($this->balances, $this->transfers);
+        $this->closeTransferForm();
+        $this->dispatch('toast', message: 'Transfer '.Transaction::formatRupiah((int) $validated['transferAmount']).' dicatat 🔄');
+    }
+
+    public function deleteTransfer(int $transferId): void
+    {
+        auth()->user()->walletTransfers()->findOrFail($transferId)->delete();
+
+        unset($this->balances, $this->transfers);
+        $this->dispatch('toast', message: 'Transfer dihapus');
     }
 
     public function period(): CarbonImmutable
@@ -66,6 +256,8 @@ new #[Title('Keuangan')] class extends Component
     public function transactions(): Collection
     {
         return auth()->user()->transactions()
+            ->with('wallet')
+            ->when($this->wallet, fn ($query) => $query->where('wallet_id', $this->wallet))
             ->whereDate('occurred_on', '>=', $this->period())
             ->whereDate('occurred_on', '<=', $this->period()->endOfMonth())
             ->orderByDesc('occurred_on')
@@ -127,6 +319,7 @@ new #[Title('Keuangan')] class extends Component
         $this->resetForm();
         $this->type = array_key_exists($type, Transaction::TYPES) ? $type : 'expense';
         $this->occurred_on = $this->period()->isSameMonth(today()) ? today()->toDateString() : $this->period()->toDateString();
+        $this->wallet_id = $this->wallet ?? $this->wallets->first()?->id;
         $this->showForm = true;
     }
 
@@ -141,6 +334,7 @@ new #[Title('Keuangan')] class extends Component
         $this->category = $transaction->category;
         $this->occurred_on = $transaction->occurred_on->toDateString();
         $this->notes = (string) $transaction->notes;
+        $this->wallet_id = $transaction->wallet_id;
         $this->showForm = true;
     }
 
@@ -154,6 +348,7 @@ new #[Title('Keuangan')] class extends Component
         $validated = $this->validateTransaction(['occurred_on' => ['required', 'date']]);
 
         $attributes = [
+            'wallet_id' => filled($validated['wallet_id']) ? (int) $validated['wallet_id'] : null,
             'type' => $validated['type'],
             'amount' => (int) $validated['amount'],
             'category' => trim($validated['category']),
@@ -167,8 +362,22 @@ new #[Title('Keuangan')] class extends Component
             auth()->user()->transactions()->create($attributes);
         }
 
+        unset($this->balances);
         $this->closeForm();
-        $this->dispatch('toast', message: Transaction::TYPES[$attributes['type']].' '.Transaction::formatRupiah($attributes['amount']).' tersimpan');
+
+        $message = Transaction::TYPES[$attributes['type']].' '.Transaction::formatRupiah($attributes['amount']).' tersimpan';
+
+        // Beri tahu langsung bila pengeluaran ini membuat anggaran bulan itu ≥ 80%.
+        if ($attributes['type'] === 'expense') {
+            $budget = app(BudgetMonitor::class)->usage(auth()->user(), CarbonImmutable::parse($attributes['occurred_on']))
+                ->first(fn (array $row) => in_array($row['key'], ['category:'.$attributes['category'], 'total'], true) && BudgetMonitor::levelFor($row['percent']));
+
+            if ($budget) {
+                $message .= ' · ⚠️ '.$budget['label'].' '.$budget['percent'].'%';
+            }
+        }
+
+        $this->dispatch('toast', message: $message);
     }
 
     public function delete(int $transactionId): void
@@ -183,6 +392,7 @@ new #[Title('Keuangan')] class extends Component
     {
         $this->resetForm();
         $this->day_of_month = today()->day;
+        $this->wallet_id = $this->wallet ?? $this->wallets->first()?->id;
 
         if ($recurringId) {
             $recurring = auth()->user()->recurringTransactions()->findOrFail($recurringId);
@@ -192,6 +402,7 @@ new #[Title('Keuangan')] class extends Component
             $this->category = $recurring->category;
             $this->notes = (string) $recurring->notes;
             $this->day_of_month = $recurring->day_of_month;
+            $this->wallet_id = $recurring->wallet_id;
         }
 
         $this->showRecurringForm = true;
@@ -207,6 +418,7 @@ new #[Title('Keuangan')] class extends Component
         $validated = $this->validateTransaction(['day_of_month' => ['required', 'integer', 'between:1,31']], ['day_of_month' => 'tanggal']);
 
         $attributes = [
+            'wallet_id' => filled($validated['wallet_id']) ? (int) $validated['wallet_id'] : null,
             'type' => $validated['type'],
             'amount' => (int) $validated['amount'],
             'category' => trim($validated['category']),
@@ -289,14 +501,16 @@ new #[Title('Keuangan')] class extends Component
             'amount' => ['required', 'integer', 'min:1', 'max:999999999999'],
             'category' => ['required', 'string', 'max:50'],
             'notes' => ['nullable', 'string', 'max:255'],
+            // Wajib memilih dompet bila pengguna sudah punya dompet.
+            'wallet_id' => [$this->wallets->isEmpty() ? 'nullable' : 'required', Rule::exists('wallets', 'id')->where('user_id', auth()->id())],
             ...$extraRules,
-        ], [], ['amount' => 'nominal', 'category' => 'kategori', 'occurred_on' => 'tanggal', 'notes' => 'keterangan', ...$extraAttributes]);
+        ], [], ['wallet_id' => 'dompet', 'amount' => 'nominal', 'category' => 'kategori', 'occurred_on' => 'tanggal', 'notes' => 'keterangan', ...$extraAttributes]);
     }
 
     private function resetForm(): void
     {
         $this->resetValidation();
-        $this->reset(['editingId', 'recurringId', 'type', 'amount', 'category', 'occurred_on', 'notes', 'day_of_month']);
+        $this->reset(['editingId', 'recurringId', 'type', 'amount', 'category', 'occurred_on', 'notes', 'day_of_month', 'wallet_id']);
     }
 };
 ?>
@@ -331,6 +545,49 @@ new #[Title('Keuangan')] class extends Component
                 <p class="truncate font-extrabold">{{ Transaction::formatRupiah($summary['expense']) }}</p>
             </div>
         </div>
+    </section>
+
+    {{-- Dompet --}}
+    <section class="card">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div class="min-w-0">
+                <h2 class="section-title">Dompet</h2>
+                @if ($this->wallets->isNotEmpty())
+                    <p class="text-xs text-muted">Total saldo <span class="font-bold text-ink">{{ Transaction::formatRupiah((int) $this->balances->sum()) }}</span></p>
+                @endif
+            </div>
+            <div class="flex shrink-0 gap-1.5">
+                @if ($this->wallets->count() >= 2)
+                    <button class="btn btn-ghost px-3 py-2 text-sm" wire:click="openTransfer"><x-icon name="swap" class="size-4" /> Transfer</button>
+                @endif
+                <button class="btn btn-ghost px-3 py-2" wire:click="openWallet" aria-label="Tambah dompet"><x-icon name="plus" class="size-4" /></button>
+            </div>
+        </div>
+        @if ($this->wallets->isEmpty())
+            <p class="text-sm text-muted">Pisahkan uang tunai, rekening bank, dan e-wallet supaya saldo masing-masing kelihatan. <button class="link" wire:click="openWallet">Tambah dompet pertama →</button></p>
+        @else
+            <div class="-mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-1">
+                @foreach ($this->wallets as $item)
+                    @php $selected = $wallet === $item->id; $balance = $this->balances[$item->id] ?? 0; @endphp
+                    <div wire:key="wallet-{{ $item->id }}" @class([
+                        'relative w-40 shrink-0 snap-start rounded-2xl border p-3 transition',
+                        'border-brand bg-brand-soft/50' => $selected,
+                        'border-line bg-surface-2/50 hover:border-brand/40' => ! $selected,
+                    ])>
+                        <button type="button" class="block w-full text-left" wire:click="filterWallet({{ $item->id }})" aria-pressed="{{ $selected ? 'true' : 'false' }}">
+                            <span class="block truncate pr-6 text-xs font-semibold text-muted">{{ $item->emoji() }} {{ $item->name }}</span>
+                            <span @class(['mt-1 block truncate font-extrabold', 'text-danger' => $balance < 0])>{{ Transaction::formatRupiah($balance) }}</span>
+                        </button>
+                        <button type="button" class="absolute top-2 right-2 rounded-lg p-1 text-muted hover:bg-surface hover:text-ink" wire:click="openWallet({{ $item->id }})" aria-label="Edit dompet {{ $item->name }}">
+                            <x-icon name="pencil" class="size-3.5" />
+                        </button>
+                    </div>
+                @endforeach
+            </div>
+            @if ($wallet)
+                <p class="mt-2 text-xs text-muted">Menampilkan transaksi dompet <b class="text-ink">{{ $this->wallets->firstWhere('id', $wallet)?->name }}</b>. <button class="link" wire:click="filterWallet(null)">Tampilkan semua</button></p>
+            @endif
+        @endif
     </section>
 
     <div class="grid grid-cols-2 gap-2">
@@ -422,6 +679,27 @@ new #[Title('Keuangan')] class extends Component
         @endforelse
     </section>
 
+    @if ($this->transfers->isNotEmpty())
+        <section class="card">
+            <h2 class="section-title mb-2">Transfer antar-dompet</h2>
+            <div class="divide-y divide-line">
+                @foreach ($this->transfers as $transfer)
+                    <div wire:key="transfer-{{ $transfer->id }}" class="flex items-center gap-3 py-2.5">
+                        <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand-ink"><x-icon name="swap" class="size-4" /></span>
+                        <span class="min-w-0 flex-1">
+                            <span class="block truncate text-sm font-bold">{{ $transfer->fromWallet->name }} → {{ $transfer->toWallet->name }}</span>
+                            <span class="block truncate text-xs text-muted">{{ $transfer->transferred_on->translatedFormat('D, d M') }}{{ $transfer->notes ? ' · '.$transfer->notes : '' }}</span>
+                        </span>
+                        <span class="shrink-0 text-sm font-extrabold">{{ Transaction::formatRupiah($transfer->amount) }}</span>
+                        <button class="rounded-lg p-1.5 text-muted hover:bg-danger/10 hover:text-danger" wire:click="deleteTransfer({{ $transfer->id }})" wire:confirm="Hapus transfer ini?" aria-label="Hapus transfer">
+                            <x-icon name="trash" class="size-4" />
+                        </button>
+                    </div>
+                @endforeach
+            </div>
+        </section>
+    @endif
+
     {{-- Daftar transaksi --}}
     <section>
         <h2 class="section-title mb-2">Transaksi</h2>
@@ -445,8 +723,9 @@ new #[Title('Keuangan')] class extends Component
                                         <span class="chip ml-1 bg-surface-2 px-1.5 py-0 text-muted">🔁 rutin</span>
                                     @endif
                                 </span>
-                                @if ($transaction->notes)
-                                    <span class="block truncate text-xs text-muted">{{ $transaction->notes }}</span>
+                                @php $walletLabel = ! $wallet && $this->wallets->count() > 1 ? $transaction->wallet?->name : null; @endphp
+                                @if ($transaction->notes || $walletLabel)
+                                    <span class="block truncate text-xs text-muted">{{ collect([$walletLabel, $transaction->notes])->filter()->implode(' · ') }}</span>
                                 @endif
                             </span>
                             <span @class(['shrink-0 text-sm font-extrabold', 'text-success' => $transaction->isIncome()])>
@@ -500,6 +779,19 @@ new #[Title('Keuangan')] class extends Component
                     @error('category') <p class="error">{{ $message }}</p> @enderror
                 </div>
 
+                @if ($this->wallets->isNotEmpty())
+                    <div>
+                        <label class="label" for="{{ $form }}-wallet">Dompet</label>
+                        <select id="{{ $form }}-wallet" wire:model="wallet_id" class="input">
+                            <option value="">Pilih dompet</option>
+                            @foreach ($this->wallets as $item)
+                                <option value="{{ $item->id }}">{{ $item->emoji() }} {{ $item->name }}</option>
+                            @endforeach
+                        </select>
+                        @error('wallet_id') <p class="error">{{ $message }}</p> @enderror
+                    </div>
+                @endif
+
                 <div class="grid grid-cols-2 gap-3">
                     @if ($form === 'transaction')
                         <div>
@@ -541,6 +833,87 @@ new #[Title('Keuangan')] class extends Component
             <option value="{{ $suggestion }}">
         @endforeach
     </datalist>
+
+    <x-sheet :show="$showWalletForm" :title="$walletId ? 'Edit dompet' : 'Dompet baru'" close="closeWalletForm">
+        <form wire:submit="saveWallet" class="space-y-4">
+            <div>
+                <label class="label" for="walletName">Nama</label>
+                <input id="walletName" wire:model="walletName" class="input" placeholder="mis. BCA, GoPay, Dompet">
+                @error('walletName') <p class="error">{{ $message }}</p> @enderror
+            </div>
+            <div class="grid grid-cols-2 gap-1.5">
+                @foreach (Wallet::TYPES as $value => $meta)
+                    <button type="button" wire:key="wallet-type-{{ $value }}" wire:click="$set('walletType', '{{ $value }}')" @class([
+                        'rounded-xl border py-2 text-sm font-bold transition',
+                        'border-brand bg-brand-soft text-brand-ink' => $walletType === $value,
+                        'border-line text-muted' => $walletType !== $value,
+                    ])>{{ $meta['emoji'] }} {{ $meta['label'] }}</button>
+                @endforeach
+            </div>
+            <div>
+                <label class="label" for="walletOpening">Saldo awal</label>
+                <div class="relative">
+                    <span class="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-sm font-bold text-muted">Rp</span>
+                    <input id="walletOpening" wire:model="walletOpening" inputmode="numeric" class="input pl-11 font-bold" placeholder="0">
+                </div>
+                <p class="mt-1 text-xs text-muted">Saldo sebelum transaksi pertama dicatat di sini. Awali dengan "-" untuk saldo minus (mis. paylater).</p>
+                @error('walletOpening') <p class="error">{{ $message }}</p> @enderror
+            </div>
+            <div class="flex gap-2 pt-1">
+                @if ($walletId)
+                    <button type="button" class="btn btn-danger" wire:click="deleteWallet({{ $walletId }})" wire:confirm="Hapus dompet ini? Transaksinya tetap ada tapi tidak lagi terhubung ke dompet mana pun, dan transfer yang memakai dompet ini ikut terhapus."><x-icon name="trash" class="size-4" /></button>
+                @endif
+                <button class="btn btn-primary flex-1">Simpan dompet</button>
+            </div>
+        </form>
+    </x-sheet>
+
+    <x-sheet :show="$showTransferForm" title="Transfer antar-dompet" close="closeTransferForm">
+        <form wire:submit="saveTransfer" class="space-y-4">
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="label" for="fromWalletId">Dari</label>
+                    <select id="fromWalletId" wire:model="fromWalletId" class="input">
+                        @foreach ($this->wallets as $item)
+                            <option value="{{ $item->id }}">{{ $item->emoji() }} {{ $item->name }}</option>
+                        @endforeach
+                    </select>
+                    @error('fromWalletId') <p class="error">{{ $message }}</p> @enderror
+                </div>
+                <div>
+                    <label class="label" for="toWalletId">Ke</label>
+                    <select id="toWalletId" wire:model="toWalletId" class="input">
+                        @foreach ($this->wallets as $item)
+                            <option value="{{ $item->id }}">{{ $item->emoji() }} {{ $item->name }}</option>
+                        @endforeach
+                    </select>
+                    @error('toWalletId') <p class="error">{{ $message }}</p> @enderror
+                </div>
+            </div>
+            <div>
+                <label class="label" for="transferAmount">Nominal</label>
+                <div class="relative">
+                    <span class="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-sm font-bold text-muted">Rp</span>
+                    <input id="transferAmount" wire:model="transferAmount" inputmode="numeric" class="input pl-11 text-lg font-extrabold" placeholder="100.000"
+                        x-on:input="$el.value = $el.value.replace(/\D/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, '.')">
+                </div>
+                @error('transferAmount') <p class="error">{{ $message }}</p> @enderror
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="label" for="transferDate">Tanggal</label>
+                    <input id="transferDate" type="date" wire:model="transferDate" class="input">
+                    @error('transferDate') <p class="error">{{ $message }}</p> @enderror
+                </div>
+                <div>
+                    <label class="label" for="transferNotes">Keterangan</label>
+                    <input id="transferNotes" wire:model="transferNotes" class="input" placeholder="opsional">
+                </div>
+            </div>
+            <p class="text-xs text-muted">Transfer tidak dihitung sebagai pemasukan maupun pengeluaran.</p>
+            <button class="btn btn-primary w-full">Simpan transfer</button>
+        </form>
+    </x-sheet>
 
     <x-sheet :show="$showBudgetForm" title="Anggaran kategori" close="closeBudgetForm">
         <form wire:submit="saveBudget" class="space-y-4">

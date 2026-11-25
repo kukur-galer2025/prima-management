@@ -23,18 +23,29 @@ new #[Layout('layouts::guest')] #[Title('Masuk')] class extends Component
             'password' => ['required', 'string'],
         ]);
 
+        // Dua lapis: per email+IP (tebak kata sandi satu akun) dan per IP (coba banyak akun sekaligus).
         $throttleKey = Str::lower($this->email).'|'.request()->ip();
+        $ipThrottleKey = 'login-ip|'.request()->ip();
 
-        if (RateLimiter::tooManyAttempts($throttleKey, 5)) {
-            throw ValidationException::withMessages([
-                'email' => 'Terlalu banyak percobaan. Coba lagi dalam '.RateLimiter::availableIn($throttleKey).' detik.',
-            ]);
+        foreach ([[$throttleKey, 5], [$ipThrottleKey, 20]] as [$key, $maxAttempts]) {
+            if (RateLimiter::tooManyAttempts($key, $maxAttempts)) {
+                throw ValidationException::withMessages([
+                    'email' => 'Terlalu banyak percobaan. Coba lagi dalam '.RateLimiter::availableIn($key).' detik.',
+                ]);
+            }
         }
 
         if (! Auth::attempt(['email' => $this->email, 'password' => $this->password], $this->remember)) {
             RateLimiter::hit($throttleKey);
+            RateLimiter::hit($ipThrottleKey, 600);
 
             throw ValidationException::withMessages(['email' => 'Email atau kata sandi salah.']);
+        }
+
+        if (Auth::user()->isDisabled()) {
+            Auth::logout();
+
+            throw ValidationException::withMessages(['email' => 'Akun ini dinonaktifkan. Hubungi admin untuk mengaktifkannya lagi.']);
         }
 
         RateLimiter::clear($throttleKey);
@@ -55,6 +66,10 @@ new #[Layout('layouts::guest')] #[Title('Masuk')] class extends Component
 
     @if (session('status'))
         <p class="mb-4 rounded-2xl bg-success/10 p-3 text-sm font-semibold text-success">{{ session('status') }}</p>
+    @endif
+
+    @if (session('error'))
+        <p class="mb-4 rounded-2xl bg-danger/10 p-3 text-sm font-semibold text-danger">{{ session('error') }}</p>
     @endif
 
     <form wire:submit="login" class="card space-y-4 p-6">
@@ -80,9 +95,5 @@ new #[Layout('layouts::guest')] #[Title('Masuk')] class extends Component
         </button>
     </form>
 
-    @if (config('app.registration_enabled'))
-        <p class="mt-6 text-center text-sm text-muted">
-            Belum punya akun? <a href="{{ route('register') }}" wire:navigate class="link">Daftar gratis</a>
-        </p>
-    @endif
+    <p class="mt-6 text-center text-sm text-muted">Belum punya akun? Minta admin untuk membuatkannya.</p>
 </div>

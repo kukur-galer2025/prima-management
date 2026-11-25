@@ -23,7 +23,8 @@ class NoteAttachmentController extends Controller
         $headers = [
             'Content-Type' => $attachment->mime_type,
             'X-Content-Type-Options' => 'nosniff',
-            'Cache-Control' => 'private, max-age=3600',
+            // Jangan disimpan di cache browser: di perangkat bersama, akun lain bisa membuka salinan cache-nya.
+            'Cache-Control' => 'private, no-store, max-age=0',
         ];
 
         return $inline

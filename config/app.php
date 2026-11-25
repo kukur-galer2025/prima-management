@@ -128,17 +128,18 @@ return [
     | Prima Management
     |--------------------------------------------------------------------------
     |
-    | registration: izinkan orang lain mendaftar sendiri lewat /daftar.
+    | Akun dibuat oleh admin lewat panel /admin (tidak ada pendaftaran mandiri).
     | admin_email + error_alerts: kirim email ke pengelola saat terjadi error.
     | attachments: batas ukuran per file (KB) dan kuota total per pengguna (MB).
     |
     */
 
-    'registration_enabled' => (bool) env('REGISTRATION_ENABLED', true),
-
     'admin_email' => env('ADMIN_EMAIL'),
 
     'error_alerts' => (bool) env('ERROR_ALERTS', false),
+
+    // Penanda rilis yang ditulis deploy.sh; dikirim sebagai header X-Release agar skrip tahu rilis mana yang tersaji.
+    'release' => is_file(base_path('RELEASE')) ? trim((string) file_get_contents(base_path('RELEASE'))) : null,
 
     'attachments' => [
         'max_file_kb' => (int) env('ATTACHMENT_MAX_FILE_KB', 10240),

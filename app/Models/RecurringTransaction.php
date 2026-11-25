@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['type', 'amount', 'category', 'notes', 'day_of_month', 'next_run_on'])]
+#[Fillable(['wallet_id', 'type', 'amount', 'category', 'notes', 'day_of_month', 'next_run_on'])]
 class RecurringTransaction extends Model
 {
     protected function casts(): array
@@ -62,6 +62,7 @@ class RecurringTransaction extends Model
             for ($guard = 0; $guard < 24 && $recurring->next_run_on->lte($today); $guard++) {
                 $user->transactions()->create([
                     'recurring_transaction_id' => $recurring->id,
+                    'wallet_id' => $recurring->wallet_id,
                     'type' => $recurring->type,
                     'amount' => $recurring->amount,
                     'category' => $recurring->category,

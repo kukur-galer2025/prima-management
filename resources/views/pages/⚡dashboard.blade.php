@@ -1,9 +1,14 @@
 <?php
 
 use App\Models\Habit;
+use App\Models\JournalEntry;
+use App\Models\SavingsGoal;
 use App\Models\ScheduleSlot;
 use App\Models\StudySession;
 use App\Models\Task;
+use App\Models\Transaction;
+use App\Models\Wallet;
+use App\Services\BudgetMonitor;
 use App\Services\QuickTaskParser;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -91,9 +96,71 @@ new #[Title('Beranda')] class extends Component
             ['label' => 'Atur jadwal fokus mingguan', 'hint' => 'Pola rutin kapan kamu mengerjakannya', 'route' => 'schedule', 'done' => $user->scheduleSlots()->exists()],
             ['label' => 'Catat sesi fokus pertama', 'hint' => 'Pakai stopwatch atau Pomodoro', 'route' => 'study', 'done' => $user->studySessions()->exists()],
             ['label' => 'Tambah satu kebiasaan', 'hint' => 'Kecil saja, yang penting konsisten', 'route' => 'habits', 'done' => $user->habits()->exists()],
+            ['label' => 'Tambah dompet', 'hint' => 'Tunai, rekening, atau e-wallet + saldo awal', 'route' => 'finance', 'done' => $user->wallets()->exists()],
             ['label' => 'Tentukan target mingguan', 'hint' => 'Berapa jam fokus per minggu', 'route' => 'account', 'done' => (bool) $user->weekly_target_minutes],
-            ['label' => 'Aktifkan notifikasi', 'hint' => 'Pengingat jadwal & ringkasan pagi', 'route' => 'account', 'done' => $user->pushSubscriptions()->exists()],
+            ['label' => 'Aktifkan pengingat', 'hint' => 'Notifikasi di HP atau sambungkan Telegram', 'route' => 'account', 'done' => $user->hasTelegram() || $user->pushSubscriptions()->exists()],
         ];
+    }
+
+    /**
+     * Ringkasan uang untuk Beranda: saldo dompet, anggaran, utang/piutang yang segera jatuh tempo, dan tabungan.
+     *
+     * @return array{hasData: bool, wallets: int, balance: int, expense: int, budgets: Collection, debts: Collection, savings: Collection}
+     */
+    #[Computed]
+    public function money(): array
+    {
+        $user = auth()->user();
+        $balances = Wallet::balancesFor($user);
+
+        $debts = $user->debts()
+            ->whereNull('settled_at')
+            ->whereNotNull('due_on')
+            ->whereDate('due_on', '<=', today()->addDays(7))
+            ->withSum('payments', 'amount')
+            ->orderBy('due_on')
+            ->limit(3)
+            ->get();
+
+        $savings = $user->savingsGoals()
+            ->withSum('deposits', 'amount')
+            ->orderByRaw('deadline is null')
+            ->orderBy('deadline')
+            ->get()
+            ->reject(fn (SavingsGoal $goal) => $goal->isReached())
+            ->take(2)
+            ->values();
+
+        $budgets = app(BudgetMonitor::class)->usage($user);
+
+        return [
+            'hasData' => $balances->isNotEmpty() || $budgets->isNotEmpty() || $debts->isNotEmpty() || $savings->isNotEmpty(),
+            'wallets' => $balances->count(),
+            'balance' => (int) $balances->sum(),
+            'expense' => (int) $user->transactions()->where('type', 'expense')->whereDate('occurred_on', '>=', today()->startOfMonth())->sum('amount'),
+            'budgets' => $budgets,
+            'debts' => $debts,
+            'savings' => $savings,
+        ];
+    }
+
+    #[Computed]
+    public function journalToday(): ?JournalEntry
+    {
+        return auth()->user()->journalEntries()->whereDate('entry_on', today())->first();
+    }
+
+    public function logMood(int $mood): void
+    {
+        if ($mood < 1 || $mood > 5) {
+            return;
+        }
+
+        $entry = $this->journalToday;
+        $entry ? $entry->update(['mood' => $mood]) : auth()->user()->journalEntries()->create(['entry_on' => today()->toDateString(), 'mood' => $mood]);
+
+        unset($this->journalToday);
+        $this->dispatch('toast', message: 'Mood hari ini tercatat '.JournalEntry::MOODS[$mood]['emoji']);
     }
 
     #[Computed]
@@ -202,7 +269,10 @@ new #[Title('Beranda')] class extends Component
     {
         return auth()->user()->tasks()
             ->with('goal')
+            ->withCount(['items', 'items as items_done_count' => fn ($query) => $query->where('is_done', true)])
             ->where('is_done', false)
+            // Yang sedang dikerjakan selalu di atas.
+            ->orderByRaw('started_at is null')
             ->orderByRaw('due_date is null')
             ->orderBy('due_date')
             ->orderByRaw('due_time is null')
@@ -248,6 +318,7 @@ new #[Title('Beranda')] class extends Component
     $onboardingDone = collect($onboarding)->where('done', true)->count();
     $showOnboarding = ! auth()->user()->onboarding_dismissed_at && $onboardingDone < count($onboarding);
     $habitsDone = $this->habitsToday->where('done_today', true)->count();
+    $money = $this->money;
 @endphp
 
 <div class="space-y-6">
@@ -315,7 +386,12 @@ new #[Title('Beranda')] class extends Component
             <div class="mb-3 flex items-start justify-between gap-3">
                 <div>
                     <p class="text-xs font-bold tracking-wider text-brand uppercase">Mulai di sini</p>
-                    <h2 class="section-title">Siapkan Prima Management-mu ({{ $onboardingDone }}/{{ count($onboarding) }})</h2>
+                    @if ($onboardingDone === 0)
+                        <h2 class="section-title">Selamat datang di Prima Management! 🎉</h2>
+                        <p class="mt-0.5 text-sm text-muted">Akunmu sudah siap. Ikuti langkah singkat ini supaya Beranda langsung berguna. Semua bisa diubah kapan saja.</p>
+                    @else
+                        <h2 class="section-title">Siapkan Prima Management-mu ({{ $onboardingDone }}/{{ count($onboarding) }})</h2>
+                    @endif
                 </div>
                 <button class="rounded-xl p-1.5 text-muted hover:bg-surface-2" wire:click="dismissOnboarding" aria-label="Sembunyikan panduan"><x-icon name="x" class="size-4" /></button>
             </div>
@@ -352,6 +428,37 @@ new #[Title('Beranda')] class extends Component
             </span>
             <x-icon name="chevron-right" class="size-5 text-muted" />
         </a>
+    @endif
+
+    {{-- Peringatan anggaran (≥ 80%) --}}
+    @foreach ($money['budgets']->filter(fn ($row) => BudgetMonitor::levelFor($row['percent'])) as $row)
+        <a href="{{ route('finance') }}" wire:navigate wire:key="budget-alert-{{ md5($row['key']) }}" @class([
+            'card card-hover flex items-center gap-3 py-3',
+            'border-danger/40 bg-danger/5' => $row['percent'] >= 100,
+            'border-warning/40 bg-warning/5' => $row['percent'] < 100,
+        ])>
+            <span class="text-2xl">{{ $row['percent'] >= 100 ? '🚨' : '⚠️' }}</span>
+            <span class="min-w-0 flex-1">
+                <span class="block text-sm font-bold">{{ $row['label'] }} {{ $row['percent'] >= 100 ? 'terlampaui' : 'hampir habis' }} · {{ $row['percent'] }}%</span>
+                <span class="block text-xs text-muted">{{ Transaction::formatRupiah($row['spent']) }} dari {{ Transaction::formatRupiah($row['budget']) }} bulan ini</span>
+            </span>
+            <x-icon name="chevron-right" class="size-4 text-muted" />
+        </a>
+    @endforeach
+
+    {{-- Mood hari ini (sore/malam, bila jurnal belum diisi) --}}
+    @if (! $this->journalToday && now()->hour >= 15)
+        <section class="card flex flex-wrap items-center gap-3">
+            <div class="min-w-0 flex-1 basis-48">
+                <h2 class="section-title">Bagaimana harimu?</h2>
+                <p class="text-xs text-muted">Satu ketukan untuk jurnal mood. <a href="{{ route('journal') }}" wire:navigate class="link">Tulis catatan →</a></p>
+            </div>
+            <div class="flex gap-1">
+                @foreach (JournalEntry::MOODS as $value => $meta)
+                    <button wire:click="logMood({{ $value }})" class="grid size-11 place-items-center rounded-2xl bg-surface-2 text-2xl transition hover:scale-110 hover:bg-brand-soft" title="{{ $meta['label'] }}" aria-label="Mood {{ $meta['label'] }}">{{ $meta['emoji'] }}</button>
+                @endforeach
+            </div>
+        </section>
     @endif
 
     {{-- Ringkasan --}}
@@ -477,6 +584,58 @@ new #[Title('Beranda')] class extends Component
         </section>
     @endif
 
+    {{-- Uang --}}
+    @if ($money['hasData'])
+        <section>
+            <div class="mb-2 flex items-center justify-between">
+                <h2 class="section-title">Uang</h2>
+                <a href="{{ route('finance') }}" wire:navigate class="link">Keuangan</a>
+            </div>
+            <div class="grid gap-2 sm:grid-cols-2">
+                <a href="{{ route('finance') }}" wire:navigate class="card card-hover block py-3">
+                    @if ($money['wallets'])
+                        <p class="text-xs font-semibold text-muted">Saldo {{ $money['wallets'] }} dompet</p>
+                        <p @class(['text-xl font-extrabold', 'text-danger' => $money['balance'] < 0])>{{ Transaction::formatRupiah($money['balance']) }}</p>
+                    @else
+                        <p class="text-xs font-semibold text-muted">Belum ada dompet</p>
+                        <p class="text-sm font-bold text-brand">Tambah dompet →</p>
+                    @endif
+                    @php $total = $money['budgets']->firstWhere('key', 'total'); @endphp
+                    <p class="mt-1 text-xs text-muted">Keluar bulan ini {{ Transaction::formatRupiah($money['expense']) }}{{ $total ? ' · '.$total['percent'].'% anggaran' : '' }}</p>
+                    @if ($total)
+                        <x-progress class="mt-2" :value="$total['percent']" :color="$total['percent'] >= 100 ? 'var(--danger)' : null" />
+                    @endif
+                </a>
+
+                @foreach ($money['debts'] as $debt)
+                    <a href="{{ route('debts', ['tab' => $debt->direction]) }}" wire:navigate wire:key="dash-debt-{{ $debt->id }}" @class(['card card-hover flex items-center gap-3 py-3', 'border-danger/40' => $debt->isOverdue()])>
+                        <span class="text-2xl">{{ $debt->isPayable() ? '🤝' : '📒' }}</span>
+                        <span class="min-w-0 flex-1">
+                            <span class="block truncate text-sm font-bold">{{ $debt->isPayable() ? 'Bayar ke' : 'Tagih' }} {{ $debt->person }} · {{ Transaction::formatRupiah($debt->remainingAmount()) }}</span>
+                            <span @class(['block text-xs', 'font-semibold text-danger' => $debt->isOverdue(), 'text-muted' => ! $debt->isOverdue()])>
+                                {{ $debt->isOverdue() ? 'Lewat tempo '.$debt->due_on->translatedFormat('d M') : ($debt->due_on->isToday() ? 'Jatuh tempo hari ini' : 'Jatuh tempo '.$debt->due_on->translatedFormat('D, d M')) }}
+                            </span>
+                        </span>
+                    </a>
+                @endforeach
+
+                @foreach ($money['savings'] as $saving)
+                    <a href="{{ route('savings') }}" wire:navigate wire:key="dash-saving-{{ $saving->id }}" class="card card-hover block py-3">
+                        <div class="mb-2 flex items-center justify-between gap-2">
+                            <p class="truncate text-sm font-bold">{{ $saving->emoji ?: '💰' }} {{ $saving->name }}</p>
+                            <span class="text-sm font-extrabold text-brand">{{ $saving->percent() }}%</span>
+                        </div>
+                        <x-progress :value="$saving->percent()" />
+                        <p class="mt-1.5 text-xs text-muted">
+                            {{ Transaction::formatRupiah($saving->savedAmount()) }} / {{ Transaction::formatRupiah($saving->target_amount) }}
+                            @if ($monthly = $saving->monthlyNeeded()) · {{ Transaction::formatRupiah($monthly) }}/bln @endif
+                        </p>
+                    </a>
+                @endforeach
+            </div>
+        </section>
+    @endif
+
     {{-- Progres target --}}
     <section>
         <div class="mb-2 flex items-center justify-between">
@@ -523,6 +682,12 @@ new #[Title('Beranda')] class extends Component
                     <span class="min-w-0 flex-1">
                         <span class="block truncate text-sm font-semibold">{{ $task->priority === 1 ? '❗ ' : '' }}{{ $task->title }}</span>
                         <span class="text-xs text-muted">
+                            @if ($task->started_at)
+                                <span class="font-semibold text-brand">● Dikerjakan</span>
+                            @endif
+                            @if ($task->items_count)
+                                <span @class(['font-semibold', 'text-success' => $task->items_done_count === $task->items_count])>☑ {{ $task->items_done_count }}/{{ $task->items_count }}</span>
+                            @endif
                             {{ $task->goal?->label() }}
                             @if ($task->due_date)
                                 <span @class(['font-semibold text-danger' => $task->isOverdue()])>

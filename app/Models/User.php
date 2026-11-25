@@ -3,10 +3,10 @@
 namespace App\Models;
 
 use Database\Factories\UserFactory;
-use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -14,8 +14,8 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 #[Fillable(['name', 'email', 'password', 'weekly_target_minutes', 'monthly_budget'])]
-#[Hidden(['password', 'remember_token', 'calendar_token'])]
-class User extends Authenticatable implements MustVerifyEmail
+#[Hidden(['password', 'remember_token', 'calendar_token', 'telegram_link_code'])]
+class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
@@ -33,7 +33,59 @@ class User extends Authenticatable implements MustVerifyEmail
             'weekly_target_minutes' => 'integer',
             'monthly_budget' => 'integer',
             'onboarding_dismissed_at' => 'datetime',
+            'is_admin' => 'boolean',
+            'disabled_at' => 'datetime',
+            'last_active_at' => 'datetime',
         ];
+    }
+
+    public function isDisabled(): bool
+    {
+        return $this->disabled_at !== null;
+    }
+
+    /** Catat waktu terakhir aktif, paling sering sekali per 5 menit agar tidak menulis di setiap request. */
+    public function touchLastActive(): void
+    {
+        if (! $this->last_active_at || $this->last_active_at->lt(now()->subMinutes(5))) {
+            // Sekadar catatan; kegagalan menulisnya tidak boleh menggagalkan halaman.
+            rescue(fn () => $this->forceFill(['last_active_at' => now()])->saveQuietly());
+        }
+    }
+
+    public function hasTelegram(): bool
+    {
+        return filled($this->telegram_chat_id);
+    }
+
+    public function wallets(): HasMany
+    {
+        return $this->hasMany(Wallet::class);
+    }
+
+    public function walletTransfers(): HasMany
+    {
+        return $this->hasMany(WalletTransfer::class);
+    }
+
+    public function savingsGoals(): HasMany
+    {
+        return $this->hasMany(SavingsGoal::class);
+    }
+
+    public function debts(): HasMany
+    {
+        return $this->hasMany(Debt::class);
+    }
+
+    public function journalEntries(): HasMany
+    {
+        return $this->hasMany(JournalEntry::class);
+    }
+
+    public function groups(): BelongsToMany
+    {
+        return $this->belongsToMany(Group::class, 'group_members')->withPivot(['role', 'share_goals'])->withTimestamps();
     }
 
     public function recurringTransactions(): HasMany
@@ -74,6 +126,9 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     public function deleteAccount(): void
     {
+        // Grup yang dimilikinya dialihkan ke anggota lain (atau dihapus bila kosong).
+        $this->groups()->get()->each(fn (Group $group) => $group->removeMember($this));
+
         Storage::disk('local')->deleteDirectory($this->attachmentDirectory());
         $this->delete();
     }

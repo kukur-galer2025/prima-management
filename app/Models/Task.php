@@ -7,15 +7,19 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
-#[Fillable(['goal_id', 'title', 'notes', 'priority', 'due_date', 'due_time', 'recurrence', 'is_done', 'done_at'])]
+#[Fillable(['goal_id', 'title', 'notes', 'priority', 'due_date', 'due_time', 'recurrence', 'is_done', 'done_at', 'started_at', 'position'])]
 class Task extends Model
 {
     /** @use HasFactory<TaskFactory> */
     use HasFactory;
 
     public const PRIORITIES = [1 => 'Tinggi', 2 => 'Sedang', 3 => 'Rendah'];
+
+    /** Kolom tampilan kanban. */
+    public const COLUMNS = ['todo' => 'Belum', 'doing' => 'Dikerjakan', 'done' => 'Selesai'];
 
     public const RECURRENCES = ['daily' => 'Setiap hari', 'weekly' => 'Setiap minggu', 'monthly' => 'Setiap bulan'];
 
@@ -25,6 +29,8 @@ class Task extends Model
             'due_date' => 'date',
             'is_done' => 'boolean',
             'done_at' => 'datetime',
+            'started_at' => 'datetime',
+            'position' => 'integer',
             'priority' => 'integer',
         ];
     }
@@ -32,6 +38,40 @@ class Task extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /** Subtugas (checklist) berurutan. */
+    public function items(): HasMany
+    {
+        return $this->hasMany(TaskItem::class)->orderBy('position')->orderBy('id');
+    }
+
+    /** Kolom kanban tempat tugas ini berada. */
+    public function column(): string
+    {
+        return match (true) {
+            $this->is_done => 'done',
+            $this->started_at !== null => 'doing',
+            default => 'todo',
+        };
+    }
+
+    /**
+     * Pindahkan tugas ke kolom kanban. Mengembalikan kemunculan berikutnya bila tugas berulang diselesaikan.
+     */
+    public function moveToColumn(string $column): ?self
+    {
+        if ($column === 'done') {
+            return $this->is_done ? null : $this->toggle();
+        }
+
+        $this->update([
+            'is_done' => false,
+            'done_at' => null,
+            'started_at' => $column === 'doing' ? ($this->started_at ?? now()) : null,
+        ]);
+
+        return null;
     }
 
     public function goal(): BelongsTo
@@ -106,7 +146,11 @@ class Task extends Model
             ->whereDate('due_date', $nextDue)
             ->first();
 
-        return $existing ?? $this->user->tasks()->create([
+        if ($existing) {
+            return $existing;
+        }
+
+        $next = $this->user->tasks()->create([
             'goal_id' => $this->goal_id,
             'title' => $this->title,
             'notes' => $this->notes,
@@ -115,5 +159,10 @@ class Task extends Model
             'due_date' => $nextDue->toDateString(),
             'due_time' => $this->due_time,
         ]);
+
+        // Checklist ikut disalin dalam keadaan belum dicentang.
+        $next->items()->createMany($this->items->map(fn (TaskItem $item) => $item->only(['title', 'position']))->all());
+
+        return $next;
     }
 }

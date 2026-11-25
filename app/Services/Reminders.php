@@ -6,9 +6,11 @@ use App\Models\Reminder;
 use App\Models\ScheduleSlot;
 use App\Models\User;
 use Carbon\CarbonInterface;
+use Throwable;
 
 /**
- * Menyusun pengingat yang jatuh tempo lalu mengirimnya sebagai push ke semua perangkat pengguna.
+ * Menyusun pengingat yang jatuh tempo lalu mengirimnya sebagai push ke semua perangkat pengguna
+ * dan/atau ke chat Telegram yang tersambung.
  */
 class Reminders
 {
@@ -25,10 +27,21 @@ class Reminders
 
     public const REVIEW_UNTIL = '21:00';
 
-    public function __construct(private WebPush $webPush) {}
+    /** Ajakan mengisi jurnal harian bila belum ada entri hari ini. */
+    public const JOURNAL_FROM = '20:30';
+
+    public const JOURNAL_UNTIL = '22:00';
+
+    /** Pengingat kebiasaan masih dikirim sampai sekian menit setelah jamnya. */
+    public const HABIT_WINDOW_MINUTES = 15;
+
+    /** Mulai jam ini peringatan yang tidak mendesak (anggaran) ditahan sampai pagi. */
+    public const QUIET_FROM = '21:30';
+
+    public function __construct(private WebPush $webPush, private Telegram $telegram, private BudgetMonitor $budgetMonitor) {}
 
     /**
-     * Kirim pengingat baru ke semua pengguna yang mengaktifkan notifikasi.
+     * Kirim pengingat baru ke semua pengguna yang mengaktifkan notifikasi push atau Telegram.
      *
      * @return int jumlah pengingat baru yang dibuat
      */
@@ -36,25 +49,56 @@ class Reminders
     {
         $created = 0;
 
-        User::query()->whereHas('pushSubscriptions')->with('pushSubscriptions')->each(function (User $user) use ($now, &$created) {
-            $newReminders = collect($this->dueFor($user, $now))
-                ->map(fn (array $reminder) => $user->reminders()->firstOrCreate(['key' => $reminder['key']], $reminder))
-                ->filter(fn (Reminder $reminder) => $reminder->wasRecentlyCreated);
-
-            if ($newReminders->isNotEmpty()) {
-                $created += $newReminders->count();
-                $this->push($user);
-            }
-        });
+        User::query()
+            ->whereNull('disabled_at')
+            ->where(fn ($query) => $query->whereHas('pushSubscriptions')->orWhereNotNull('telegram_chat_id'))
+            ->with('pushSubscriptions')
+            ->each(function (User $user) use ($now, &$created) {
+                // Kegagalan pada satu pengguna tidak boleh menghentikan pengingat pengguna lain.
+                try {
+                    $created += $this->dispatchTo($user, $now);
+                } catch (Throwable $exception) {
+                    report($exception);
+                }
+            });
 
         return $created;
     }
 
+    private function dispatchTo(User $user, CarbonInterface $now): int
+    {
+        $newReminders = collect($this->dueFor($user, $now))
+            ->map(fn (array $reminder) => $user->reminders()->firstOrCreate(['key' => $reminder['key']], $reminder))
+            ->filter(fn (Reminder $reminder) => $reminder->wasRecentlyCreated);
+
+        if ($newReminders->isNotEmpty()) {
+            $this->push($user);
+            $newReminders->each(fn (Reminder $reminder) => $this->sendToTelegram($user, $reminder));
+        }
+
+        return $newReminders->count();
+    }
+
+    /** Kirim push tanpa payload; service worker mengambil isinya dari /pengingat/terbaru. */
     public function push(User $user): void
     {
         foreach ($user->pushSubscriptions as $subscription) {
             $this->webPush->send($subscription);
         }
+    }
+
+    public function sendToTelegram(User $user, Reminder $reminder): bool
+    {
+        if (! $user->hasTelegram()) {
+            return false;
+        }
+
+        return $this->telegram->sendMessage(
+            $user->telegram_chat_id,
+            '<b>'.e($reminder->title).'</b>'.'
+'.e($reminder->body),
+            url($reminder->url),
+        );
     }
 
     /**
@@ -117,10 +161,47 @@ class Reminders
             ];
         }
 
+        // Hanya untuk pengguna yang sudah mulai menulis jurnal, supaya yang tidak memakainya tidak terganggu.
+        if ($currentTime >= self::JOURNAL_FROM && $currentTime < self::JOURNAL_UNTIL
+            && $user->journalEntries()->exists()
+            && ! $user->journalEntries()->whereDate('entry_on', $date)->exists()) {
+            $reminders[] = [
+                'key' => "journal:{$date}",
+                'title' => 'Bagaimana harimu? 📔',
+                'body' => 'Catat mood dan satu kalimat tentang hari ini di jurnal.',
+                'url' => route('journal', absolute: false),
+            ];
+        }
+
+        // Kebiasaan dengan jam pengingat; jendela 15 menit agar tidak terlewat bila scheduler sempat tertunda.
+        $habitWindowStart = $now->copy()->subMinutes(self::HABIT_WINDOW_MINUTES)->format('H:i');
+        $dueHabits = $user->habits()
+            ->whereNotNull('remind_at')
+            ->where('remind_at', '<=', $currentTime)
+            ->when($habitWindowStart < $currentTime, fn ($query) => $query->where('remind_at', '>', $habitWindowStart))
+            ->whereDoesntHave('logs', fn ($query) => $query->whereDate('logged_on', $date))
+            ->get()
+            ->filter(fn ($habit) => $habit->isScheduledOn($now));
+
+        foreach ($dueHabits as $habit) {
+            $reminders[] = [
+                'key' => "habit:{$habit->id}:{$date}",
+                'title' => trim(($habit->icon ?? '').' '.$habit->name),
+                'body' => "Waktunya {$habit->name}. Centang setelah selesai supaya streak-mu terjaga.",
+                'url' => route('habits', absolute: false),
+            ];
+        }
+
+        // Peringatan anggaran tidak dikirim tengah malam; yang tertunda terkirim mulai pagi.
+        if ($currentTime >= self::DIGEST_FROM && $currentTime < self::QUIET_FROM) {
+            array_push($reminders, ...$this->budgetMonitor->alerts($user, $now));
+        }
+
         return $reminders;
     }
 
-    private function dailyDigest(User $user, CarbonInterface $now): ?string
+    /** Ringkasan rencana hari ini (dipakai ringkasan pagi dan perintah /hari di Telegram). */
+    public function dailyDigest(User $user, CarbonInterface $now): ?string
     {
         $openTasks = $user->tasks()->where('is_done', false)->whereNotNull('due_date');
         $dueToday = (clone $openTasks)->whereDate('due_date', $now)->count();
@@ -139,11 +220,18 @@ class Reminders
                 return $days === 0 ? "{$goal->name} hari ini!" : "{$goal->name} tinggal {$days} hari";
             });
 
+        $debtsDue = $user->debts()
+            ->whereNull('settled_at')
+            ->whereDate('due_on', '<=', $now)
+            ->get()
+            ->map(fn ($debt) => ($debt->isPayable() ? "Bayar utang ke {$debt->person}" : "Tagih {$debt->person}").($debt->due_on->isSameDay($now) ? ' hari ini' : ' (lewat tempo)'));
+
         $parts = array_filter([
             $dueToday ? "{$dueToday} tugas hari ini" : null,
             $overdue ? "{$overdue} tugas terlambat" : null,
             $habitsToday ? "{$habitsToday} kebiasaan" : null,
             ...$deadlines->all(),
+            ...$debtsDue->all(),
         ]);
 
         return $parts ? implode(' · ', $parts) : null;
