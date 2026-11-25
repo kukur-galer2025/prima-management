@@ -86,7 +86,9 @@ class Goal extends Model
             return null;
         }
 
-        $logged = (int) ($this->minutes_total ?? $this->sessions()->sum('minutes'));
+        $logged = array_key_exists('minutes_total', $this->attributes)
+            ? (int) $this->minutes_total
+            : (int) $this->sessions()->sum('minutes');
         $remaining = $this->target_hours * 60 - $logged;
 
         if ($remaining <= 0) {
@@ -94,7 +96,11 @@ class Goal extends Model
         }
 
         $perDay = (int) ceil($remaining / $daysLeft);
-        $recentPerDay = (int) round($this->sessions()->whereDate('studied_on', '>=', today()->subDays(13))->sum('minutes') / 14);
+        // Pakai agregat dari scopeWithStats bila sudah dimuat, agar daftar target tidak memicu N+1 query.
+        $recentMinutes = array_key_exists('recent_minutes', $this->attributes)
+            ? (int) $this->recent_minutes
+            : (int) $this->sessions()->whereDate('studied_on', '>=', today()->subDays(13))->sum('minutes');
+        $recentPerDay = (int) round($recentMinutes / 14);
 
         return [
             'remainingMinutes' => $remaining,
@@ -115,7 +121,8 @@ class Goal extends Model
     {
         return $query
             ->withCount(['topics', 'topics as topics_done_count' => fn ($q) => $q->where('is_done', true)])
-            ->withSum('sessions as minutes_total', 'minutes');
+            ->withSum('sessions as minutes_total', 'minutes')
+            ->withSum(['sessions as recent_minutes' => fn ($q) => $q->whereDate('studied_on', '>=', today()->subDays(13))], 'minutes');
     }
 
     public function hoursLogged(): float

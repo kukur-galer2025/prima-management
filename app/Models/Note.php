@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable(['goal_id', 'title', 'body', 'is_pinned'])]
 class Note extends Model
@@ -27,5 +28,16 @@ class Note extends Model
     public function goal(): BelongsTo
     {
         return $this->belongsTo(Goal::class)->withTrashed();
+    }
+
+    public function attachments(): HasMany
+    {
+        return $this->hasMany(NoteAttachment::class);
+    }
+
+    protected static function booted(): void
+    {
+        // Hapus lewat model agar file di penyimpanan ikut terhapus (cascade database tidak menyentuh file).
+        static::deleting(fn (self $note) => $note->attachments->each->delete());
     }
 }

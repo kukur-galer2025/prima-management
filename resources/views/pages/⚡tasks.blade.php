@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Task;
+use App\Services\QuickTaskParser;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
@@ -78,8 +79,35 @@ new #[Title('Tugas')] class extends Component
         ])->filter(fn (Collection $group) => $group->isNotEmpty())->all();
     }
 
+    /**
+     * Pratinjau hasil penguraian judul (tanggal, jam, prioritas, target, pengulangan).
+     *
+     * @return array{title: string, due_date: ?string, due_time: ?string, priority: ?int, recurrence: ?string, goal_id: ?int, goal_label: ?string, detected: bool}|null
+     */
+    #[Computed]
+    public function quickPreview(): ?array
+    {
+        if ($this->showForm || blank($this->title)) {
+            return null;
+        }
+
+        $parsed = app(QuickTaskParser::class)->parse($this->title, $this->goals, now());
+
+        return $parsed['detected'] ? $parsed : null;
+    }
+
     public function quickAdd(): void
     {
+        // Isian manual (tanggal, jam, dll.) diutamakan; sisanya diambil dari kalimat judul.
+        if ($parsed = $this->quickPreview) {
+            $this->title = $parsed['title'];
+            $this->due_date = $this->due_date ?: $parsed['due_date'];
+            $this->due_time = $this->due_time ?: $parsed['due_time'];
+            $this->goal_id = filled($this->goal_id) ? $this->goal_id : $parsed['goal_id'];
+            $this->recurrence = $this->recurrence ?: (string) $parsed['recurrence'];
+            $this->priority = (int) $this->priority !== 2 ? $this->priority : ($parsed['priority'] ?? 2);
+        }
+
         $validated = $this->validateTask();
 
         auth()->user()->tasks()->create($validated);
@@ -171,8 +199,26 @@ new #[Title('Tugas')] class extends Component
     <x-page-header title="Tugas" subtitle="Hal-hal konkret yang harus dibereskan." icon="check" />
 
     <form wire:submit="quickAdd" class="card space-y-2 p-3">
-        <input wire:model="title" class="input" placeholder="mis. Minta surat rekomendasi ke dosen PA" aria-label="Judul tugas" @if ($showForm) disabled @endif>
+        <input wire:model.live.debounce.400ms="title" class="input" placeholder="Coba: Daftar ulang besok jam 10 !penting" aria-label="Judul tugas" autocomplete="off" @if ($showForm) disabled @endif>
         @if (! $showForm) @error('title') <p class="error">{{ $message }}</p> @enderror @endif
+        @if ($preview = $this->quickPreview)
+            <div class="flex flex-wrap items-center gap-1.5 px-1 text-xs" aria-live="polite">
+                <span class="font-semibold text-muted">Terbaca:</span>
+                <span class="chip bg-surface-2 text-ink">“{{ $preview['title'] }}”</span>
+                @if ($preview['due_date'])
+                    <span class="chip bg-brand-soft text-brand-ink">📅 {{ \Illuminate\Support\Carbon::parse($preview['due_date'])->translatedFormat('D, d M') }}{{ $preview['due_time'] ? ' · '.$preview['due_time'] : '' }}</span>
+                @endif
+                @if ($preview['priority'])
+                    <span class="chip bg-danger/10 text-danger">{{ $preview['priority'] === 1 ? '❗ Penting' : '↓ Rendah' }}</span>
+                @endif
+                @if ($preview['recurrence'])
+                    <span class="chip bg-surface-2 text-ink">🔁 {{ Task::RECURRENCES[$preview['recurrence']] }}</span>
+                @endif
+                @if ($preview['goal_label'])
+                    <span class="chip bg-surface-2 text-ink">🎯 {{ $preview['goal_label'] }}</span>
+                @endif
+            </div>
+        @endif
         <div class="flex gap-2">
             <select wire:model="goal_id" class="input min-w-0 py-2 text-sm" aria-label="Target" @if ($showForm) disabled @endif>
                 <option value="">Tanpa target</option>

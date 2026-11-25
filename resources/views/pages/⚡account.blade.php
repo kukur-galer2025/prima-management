@@ -2,7 +2,9 @@
 
 use App\Models\PushSubscription;
 use App\Models\StudySession;
+use App\Services\DataExporter;
 use App\Services\DataImporter;
+use Illuminate\Support\Facades\Auth;
 use App\Services\Reminders;
 use App\Services\WebPush;
 use Illuminate\Validation\Rule;
@@ -195,53 +197,37 @@ new #[Title('Akun')] class extends Component
 
     public function exportJson(): StreamedResponse
     {
-        $user = auth()->user();
+        $json = app(DataExporter::class)->toJson(auth()->user());
 
-        $data = [
-            'app' => config('app.name'),
-            'exported_at' => now()->toIso8601String(),
-            'user' => $user->only(['name', 'email', 'weekly_target_minutes', 'monthly_budget']),
-            'goals' => $user->goals()->withTrashed()->with('topics')->get()->makeHidden('user_id'),
-            'study_sessions' => $user->studySessions()->get()->makeHidden('user_id'),
-            'schedule_slots' => $user->scheduleSlots()->get()->makeHidden('user_id'),
-            'tasks' => $user->tasks()->get()->makeHidden('user_id'),
-            'habits' => $user->habits()->with('logs')->get()->makeHidden('user_id'),
-            'transactions' => $user->transactions()->get()->makeHidden('user_id'),
-            'recurring_transactions' => $user->recurringTransactions()->get()->makeHidden('user_id'),
-            'budgets' => $user->budgets()->get()->makeHidden('user_id'),
-            'notes' => $user->notes()->get()->makeHidden('user_id'),
-            'weekly_reviews' => $user->weeklyReviews()->get()->makeHidden('user_id'),
-        ];
-
-        return response()->streamDownload(
-            fn () => print (json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)),
-            'prima-management-'.now()->format('Ymd').'.json',
-            ['Content-Type' => 'application/json'],
-        );
+        return response()->streamDownload(fn () => print ($json), 'prima-management-'.now()->format('Ymd').'.json', ['Content-Type' => 'application/json']);
     }
 
     public function exportSessionsCsv(): StreamedResponse
     {
-        $sessions = auth()->user()->studySessions()->with(['goal', 'topic'])->orderBy('studied_on')->orderBy('id')->get();
+        $user = auth()->user();
 
-        return response()->streamDownload(function () use ($sessions) {
+        return response()->streamDownload(function () use ($user) {
             $output = fopen('php://output', 'w');
-            fwrite($output, "\xEF\xBB\xBF"); // BOM agar Excel membaca UTF-8 dengan benar
-            fputcsv($output, ['Tanggal', 'Target', 'Materi', 'Menit', 'Skor', 'Catatan'], escape: '');
-
-            foreach ($sessions as $session) {
-                fputcsv($output, [
-                    $session->studied_on->toDateString(),
-                    $session->goal?->name,
-                    $session->topic?->name,
-                    $session->minutes,
-                    is_null($session->score) ? '' : StudySession::formatScore($session->score),
-                    $session->notes,
-                ], escape: '');
-            }
-
+            app(DataExporter::class)->writeSessionsCsv($user, $output);
             fclose($output);
         }, 'sesi-fokus-'.now()->format('Ymd').'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    public string $delete_password = '';
+
+    /** Hapus akun permanen beserta semua data & lampirannya. */
+    public function deleteAccount(): void
+    {
+        $this->validate(['delete_password' => ['required', 'current_password']], [], ['delete_password' => 'kata sandi']);
+
+        $user = auth()->user();
+        Auth::logout();
+        $user->deleteAccount();
+        session()->invalidate();
+        session()->regenerateToken();
+        session()->flash('status', 'Akunmu sudah dihapus. Terima kasih sudah memakai Prima Management.');
+
+        $this->redirectRoute('login');
     }
 };
 ?>
@@ -282,9 +268,9 @@ new #[Title('Akun')] class extends Component
     <section class="card">
         <h2 class="mb-4 font-bold">Target & anggaran</h2>
         <form wire:submit="savePlanning" class="space-y-4">
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-2 items-end gap-3">
                 <div>
-                    <label class="label" for="weekly_target_hours">Target fokus / minggu (jam)</label>
+                    <label class="label" for="weekly_target_hours">Fokus / minggu (jam)</label>
                     <input id="weekly_target_hours" type="number" step="0.5" min="0.5" inputmode="decimal" wire:model="weekly_target_hours" class="input" placeholder="mis. 15">
                     @error('weekly_target_hours') <p class="error">{{ $message }}</p> @enderror
                 </div>
@@ -474,6 +460,31 @@ new #[Title('Akun')] class extends Component
 
     <form method="POST" action="{{ route('logout') }}" onsubmit="window.primaOffline?.clearPages()">
         @csrf
-        <button class="btn btn-danger w-full"><x-icon name="logout" class="size-4" /> Keluar</button>
+        <button class="btn btn-ghost w-full"><x-icon name="logout" class="size-4" /> Keluar</button>
     </form>
+
+    {{-- Zona berbahaya --}}
+    <section class="card border-danger/30" x-data="{ open: false }">
+        <button type="button" class="flex w-full items-center justify-between text-left" x-on:click="open = ! open" :aria-expanded="open">
+            <span>
+                <span class="block font-bold text-danger">Hapus akun</span>
+                <span class="block text-xs text-muted">Menghapus akun dan seluruh data secara permanen.</span>
+            </span>
+            <x-icon name="chevron-right" class="size-4 text-muted transition" ::class="open && 'rotate-90'" />
+        </button>
+        <form wire:submit="deleteAccount" class="mt-4 space-y-3" x-show="open" x-cloak>
+            <p class="rounded-2xl bg-danger/10 p-3 text-sm text-danger">
+                Semua target, sesi fokus, tugas, kebiasaan, keuangan, catatan beserta lampirannya akan dihapus dan <b>tidak bisa dikembalikan</b>.
+                Unduh dulu "Semua data (JSON)" di atas bila ingin menyimpan salinan.
+            </p>
+            <div>
+                <label class="label" for="delete_password">Ketik kata sandi untuk konfirmasi</label>
+                <input id="delete_password" type="password" wire:model="delete_password" class="input" autocomplete="current-password">
+                @error('delete_password') <p class="error">{{ $message }}</p> @enderror
+            </div>
+            <button class="btn w-full bg-danger text-white hover:brightness-110" wire:confirm="Yakin hapus akun beserta semua datanya?">
+                <x-icon name="trash" class="size-4" /> Hapus akun saya permanen
+            </button>
+        </form>
+    </section>
 </div>

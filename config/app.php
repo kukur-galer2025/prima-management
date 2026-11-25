@@ -123,4 +123,26 @@ return [
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Prima Management
+    |--------------------------------------------------------------------------
+    |
+    | registration: izinkan orang lain mendaftar sendiri lewat /daftar.
+    | admin_email + error_alerts: kirim email ke pengelola saat terjadi error.
+    | attachments: batas ukuran per file (KB) dan kuota total per pengguna (MB).
+    |
+    */
+
+    'registration_enabled' => (bool) env('REGISTRATION_ENABLED', true),
+
+    'admin_email' => env('ADMIN_EMAIL'),
+
+    'error_alerts' => (bool) env('ERROR_ALERTS', false),
+
+    'attachments' => [
+        'max_file_kb' => (int) env('ATTACHMENT_MAX_FILE_KB', 10240),
+        'quota_mb' => (int) env('ATTACHMENT_QUOTA_MB', 200),
+    ],
+
 ];

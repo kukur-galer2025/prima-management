@@ -72,21 +72,27 @@
                     </div>
                 @endforeach
             </nav>
-            <div class="mt-4 flex items-center gap-2 rounded-2xl border border-line/70 bg-surface p-2">
-                <a href="{{ route('account') }}" wire:navigate class="flex min-w-0 flex-1 items-center gap-2 rounded-xl p-1 hover:bg-surface-2">
+            <div class="mt-4 rounded-2xl border border-line/70 bg-surface p-2">
+                <a href="{{ route('account') }}" wire:navigate @class([
+                    'flex items-center gap-2.5 rounded-xl p-1.5 transition hover:bg-surface-2',
+                    'bg-brand-soft' => request()->routeIs('account'),
+                ])>
                     <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-linear-to-br from-brand to-brand-2 text-sm font-extrabold text-on-brand">{{ $initial }}</span>
                     <span class="min-w-0">
                         <span class="block truncate text-sm font-bold">{{ $user->name }}</span>
-                        <span class="block truncate text-xs text-muted">Akun & pengaturan</span>
+                        <span class="block truncate text-xs text-muted">{{ $user->email }}</span>
                     </span>
                 </a>
-                <x-theme-toggle />
-                <form method="POST" action="{{ route('logout') }}" onsubmit="window.primaOffline?.clearPages()">
-                    @csrf
-                    <button class="grid size-10 place-items-center rounded-2xl text-muted transition hover:bg-danger/10 hover:text-danger" aria-label="Keluar" title="Keluar">
-                        <x-icon name="logout" />
-                    </button>
-                </form>
+                <div class="mt-1 flex items-center justify-between border-t border-line/70 pt-1">
+                    <x-theme-toggle />
+                    <a href="{{ route('account') }}" wire:navigate class="text-xs font-bold text-muted hover:text-ink">Pengaturan</a>
+                    <form method="POST" action="{{ route('logout') }}" onsubmit="window.primaOffline?.clearPages()">
+                        @csrf
+                        <button class="grid size-9 place-items-center rounded-2xl text-muted transition hover:bg-danger/10 hover:text-danger" aria-label="Keluar" title="Keluar">
+                            <x-icon name="logout" />
+                        </button>
+                    </form>
+                </div>
             </div>
         </aside>
 
@@ -138,9 +144,10 @@
 
     {{-- Toast notifikasi --}}
     <div x-data="{ show: false, message: '', timer: null }"
+        @if (session('status')) x-init="message = @js(session('status')); show = true; timer = setTimeout(() => show = false, 4000)" @endif
         x-on:toast.window="message = $event.detail.message; show = true; clearTimeout(timer); timer = setTimeout(() => show = false, 2800)"
         x-show="show" x-transition.opacity x-cloak
-        class="fixed inset-x-0 bottom-28 z-[60] flex justify-center px-4 md:bottom-8">
+        class="fixed inset-x-0 bottom-28 z-60 flex justify-center px-4 md:bottom-8">
         <div class="rounded-2xl bg-ink px-4 py-2.5 text-sm font-semibold text-bg shadow-xl" x-text="message"></div>
     </div>
 

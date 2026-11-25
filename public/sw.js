@@ -3,7 +3,7 @@
 // - Halaman Fokus: network-first, salinan terakhir disimpan agar timer & catat offline tetap bisa dibuka
 // - Halaman lain: network-first, jatuh ke halaman offline bila tidak ada koneksi
 // - Push: isi notifikasi diambil dari /pengingat/terbaru (push dikirim tanpa payload)
-const CACHE = 'prima-management-v2';
+const CACHE = 'prima-management-v3';
 const PAGES = 'prima-management-pages-v1';
 const OFFLINE_URL = '/offline.html';
 const OFFLINE_PAGES = ['/fokus'];

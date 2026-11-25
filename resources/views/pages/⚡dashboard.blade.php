@@ -3,14 +3,49 @@
 use App\Models\Habit;
 use App\Models\ScheduleSlot;
 use App\Models\StudySession;
+use App\Models\Task;
+use App\Services\QuickTaskParser;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
 new #[Title('Beranda')] class extends Component
 {
+    public string $quickTask = '';
+
+    /** @return array{title: string, due_date: ?string, due_time: ?string, priority: ?int, recurrence: ?string, goal_id: ?int, goal_label: ?string, detected: bool}|null */
+    #[Computed]
+    public function quickPreview(): ?array
+    {
+        if (blank($this->quickTask)) {
+            return null;
+        }
+
+        return app(QuickTaskParser::class)->parse($this->quickTask, auth()->user()->goals()->where('status', '!=', 'done')->get(), now());
+    }
+
+    public function addQuickTask(): void
+    {
+        $this->validate(['quickTask' => ['required', 'string', 'max:300']], [], ['quickTask' => 'tugas']);
+
+        $parsed = $this->quickPreview;
+        $task = auth()->user()->tasks()->create([
+            'title' => Str::limit($parsed['title'], 200, ''),
+            'due_date' => $parsed['due_date'],
+            'due_time' => $parsed['due_time'],
+            'priority' => $parsed['priority'] ?? 2,
+            'recurrence' => $parsed['recurrence'],
+            'goal_id' => $parsed['goal_id'],
+        ]);
+
+        $this->reset('quickTask');
+        unset($this->upcomingTasks, $this->tasksDueToday);
+        $this->dispatch('toast', message: 'Ditambahkan: '.$task->title.($task->due_date ? ' · '.$task->dueLabel('D, d M') : ''));
+    }
+
     public function toggleTask(int $taskId): void
     {
         $task = auth()->user()->tasks()->findOrFail($taskId);
@@ -244,6 +279,35 @@ new #[Title('Beranda')] class extends Component
             </x-ring>
         </div>
     </section>
+
+    {{-- Tambah tugas cepat dengan bahasa sehari-hari --}}
+    <form wire:submit="addQuickTask" class="card p-3">
+        <div class="flex gap-2">
+            <label class="relative min-w-0 flex-1">
+                <x-icon name="bolt" class="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-brand" />
+                <input wire:model.live.debounce.400ms="quickTask" class="input pl-10" placeholder="Tambah cepat: kirim CV jumat jam 9 !penting" aria-label="Tambah tugas cepat" autocomplete="off">
+            </label>
+            <button class="btn btn-primary shrink-0 px-3.5" aria-label="Tambahkan tugas"><x-icon name="plus" class="size-5" /></button>
+        </div>
+        @error('quickTask') <p class="error px-1">{{ $message }}</p> @enderror
+        @if (($preview = $this->quickPreview) && $preview['detected'])
+            <div class="mt-2 flex flex-wrap items-center gap-1.5 px-1 text-xs" aria-live="polite">
+                <span class="chip bg-surface-2 text-ink">“{{ $preview['title'] }}”</span>
+                @if ($preview['due_date'])
+                    <span class="chip bg-brand-soft text-brand-ink">📅 {{ Carbon::parse($preview['due_date'])->translatedFormat('D, d M') }}{{ $preview['due_time'] ? ' · '.$preview['due_time'] : '' }}</span>
+                @endif
+                @if ($preview['priority'])
+                    <span class="chip bg-danger/10 text-danger">{{ $preview['priority'] === 1 ? '❗ Penting' : '↓ Rendah' }}</span>
+                @endif
+                @if ($preview['recurrence'])
+                    <span class="chip bg-surface-2 text-ink">🔁 {{ Task::RECURRENCES[$preview['recurrence']] }}</span>
+                @endif
+                @if ($preview['goal_label'])
+                    <span class="chip bg-surface-2 text-ink">🎯 {{ $preview['goal_label'] }}</span>
+                @endif
+            </div>
+        @endif
+    </form>
 
     {{-- Panduan awal --}}
     @if ($showOnboarding)

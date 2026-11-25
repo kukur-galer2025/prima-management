@@ -79,4 +79,10 @@ new #[Layout('layouts::guest')] #[Title('Masuk')] class extends Component
             <span wire:loading wire:target="login">Memproses…</span>
         </button>
     </form>
+
+    @if (config('app.registration_enabled'))
+        <p class="mt-6 text-center text-sm text-muted">
+            Belum punya akun? <a href="{{ route('register') }}" wire:navigate class="link">Daftar gratis</a>
+        </p>
+    @endif
 </div>

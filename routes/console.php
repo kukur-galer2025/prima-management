@@ -25,6 +25,7 @@ Artisan::command('app:create-user {--with-goals : Isi target awal}', function ()
     $secret = password('Kata sandi (min. 8 karakter)', required: true, validate: fn (string $value) => strlen($value) >= 8 ? null : 'Minimal 8 karakter.');
 
     $user = User::query()->updateOrCreate(['email' => $email], ['name' => $name, 'password' => $secret]);
+    $user->forceFill(['email_verified_at' => $user->email_verified_at ?? now()])->save();
 
     if ($this->option('with-goals')) {
         (new StarterGoalsSeeder)->run($user);
@@ -42,24 +43,28 @@ Artisan::command('app:backup-database {--keep=14 : Jumlah backup terbaru yang di
         return 1;
     }
 
-    $disk = Storage::disk('local');
-    $disk->makeDirectory('backups');
-
-    $path = 'backups/prima-management-'.now()->format('Ymd-His').'.sqlite';
-
     // VACUUM INTO menghasilkan salinan yang konsisten walau aplikasi sedang menulis.
-    $connection->statement('VACUUM INTO ?', [$disk->path($path)]);
+    $temporary = storage_path('app/private/backup-'.Str::random(8).'.sqlite');
+    $connection->statement('VACUUM INTO ?', [$temporary]);
 
-    collect($disk->files('backups'))
-        ->filter(fn (string $file) => Str::endsWith($file, '.sqlite'))
+    try {
+        $name = 'prima-management-'.now()->format('Ymd-His').'.sqlite.gz';
+        $disk = Storage::disk('backups');
+        $disk->put($name, gzencode((string) file_get_contents($temporary), 9));
+    } finally {
+        @unlink($temporary);
+    }
+
+    collect($disk->files())
+        ->filter(fn (string $file) => Str::startsWith($file, 'prima-management-') && Str::endsWith($file, ['.sqlite', '.sqlite.gz']))
         ->sortDesc()
         ->slice(max(1, (int) $this->option('keep')))
         ->each(fn (string $file) => $disk->delete($file));
 
-    $this->info("Backup tersimpan: storage/app/private/{$path}");
+    $this->info('Backup tersimpan: '.$disk->path($name));
 
     return 0;
-})->purpose('Cadangkan database SQLite ke storage/app/private/backups');
+})->purpose('Cadangkan database SQLite (terkompresi) ke disk "backups" (atur lewat BACKUP_PATH)');
 
 Artisan::command('app:send-reminders', function (Reminders $reminders) {
     $count = $reminders->dispatch(now());

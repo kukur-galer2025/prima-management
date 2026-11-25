@@ -1,8 +1,9 @@
 @props(['title', 'subtitle' => null, 'icon' => null])
 
 {{-- Judul halaman: ikon bergradasi, judul, subjudul, dan slot "actions" untuk tombol di kanan --}}
-<header {{ $attributes->merge(['class' => 'flex items-center justify-between gap-3']) }}>
-    <div class="flex min-w-0 items-center gap-3">
+{{-- Di layar sempit, tombol aksi turun ke baris sendiri agar subjudul tidak terpotong --}}
+<header {{ $attributes->merge(['class' => 'flex flex-wrap items-center justify-between gap-3']) }}>
+    <div class="flex min-w-0 flex-1 basis-64 items-center gap-3">
         @if ($icon)
             <span class="icon-tile size-11 bg-linear-to-br from-brand to-brand-2 text-on-brand shadow-md shadow-brand/25">
                 <x-icon :name="$icon" class="size-5" />
@@ -16,6 +17,6 @@
         </div>
     </div>
     @isset($actions)
-        <div class="flex shrink-0 items-center gap-2">{{ $actions }}</div>
+        <div class="ml-auto flex shrink-0 items-center gap-2">{{ $actions }}</div>
     @endisset
 </header>

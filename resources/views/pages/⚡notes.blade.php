@@ -1,14 +1,59 @@
 <?php
 
+use App\Models\Note;
+use App\Models\NoteAttachment;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 
 new #[Title('Catatan')] class extends Component
 {
+    use WithFileUploads;
+
+    /** @var array<int, \Livewire\Features\SupportFileUploads\TemporaryUploadedFile> */
+    public array $uploads = [];
+
+    #[Computed]
+    public function editingAttachments(): Collection
+    {
+        return $this->editingId
+            ? auth()->user()->noteAttachments()->where('note_id', $this->editingId)->oldest()->get()
+            : collect();
+    }
+
+    public function removeUpload(int $index): void
+    {
+        unset($this->uploads[$index]);
+        $this->uploads = array_values($this->uploads);
+    }
+
+    public function deleteAttachment(int $attachmentId): void
+    {
+        auth()->user()->noteAttachments()->findOrFail($attachmentId)->delete();
+
+        unset($this->editingAttachments);
+        $this->dispatch('toast', message: 'Lampiran dihapus');
+    }
+
+    /** Simpan file yang baru diunggah ke folder privat milik pengguna. */
+    private function storeUploads(Note $note): void
+    {
+        $user = auth()->user();
+
+        foreach ($this->uploads as $file) {
+            $note->attachments()->make([
+                'path' => $file->storeAs($user->attachmentDirectory(), Str::uuid().'.'.strtolower($file->getClientOriginalExtension()), 'local'),
+                'original_name' => Str::limit($file->getClientOriginalName(), 250, ''),
+                'mime_type' => $file->getMimeType() ?: 'application/octet-stream',
+                'size' => $file->getSize(),
+            ])->forceFill(['user_id' => $user->id])->save();
+        }
+    }
     #[Url(as: 'q', except: '')]
     public string $search = '';
 
@@ -52,6 +97,7 @@ new #[Title('Catatan')] class extends Component
 
         return auth()->user()->notes()
             ->with('goal')
+            ->withCount('attachments')
             ->when($this->goalFilter, fn ($query) => $query->where('goal_id', $this->goalFilter))
             ->when($search !== '', fn ($query) => $query->where(fn ($query) => $query
                 ->where('title', 'like', "%{$search}%")
@@ -100,7 +146,20 @@ new #[Title('Catatan')] class extends Component
             'body' => ['nullable', 'string', 'max:20000'],
             'goal_id' => ['nullable', Rule::exists('goals', 'id')->where('user_id', auth()->id())->whereNull('deleted_at')],
             'is_pinned' => ['boolean'],
-        ], [], ['title' => 'judul', 'body' => 'isi catatan', 'goal_id' => 'target']);
+            'uploads' => ['array', 'max:10'],
+            'uploads.*' => ['file', 'max:'.config('app.attachments.max_file_kb'), 'extensions:'.implode(',', NoteAttachment::ALLOWED_EXTENSIONS)],
+        ], [
+            'uploads.*.max' => 'Ukuran tiap file maksimal '.round(config('app.attachments.max_file_kb') / 1024).' MB.',
+            'uploads.*.extensions' => 'Jenis file tidak didukung. Gunakan PDF, gambar, dokumen Office, TXT, CSV, atau ZIP.',
+        ], ['title' => 'judul', 'body' => 'isi catatan', 'goal_id' => 'target', 'uploads' => 'lampiran']);
+
+        $uploadSize = collect($this->uploads)->sum(fn ($file) => $file->getSize());
+
+        if ($uploadSize > auth()->user()->remainingAttachmentQuota()) {
+            $this->addError('uploads', 'Kuota lampiran ('.config('app.attachments.quota_mb').' MB) tidak cukup. Hapus lampiran lama dulu.');
+
+            return;
+        }
 
         $attributes = [
             'title' => trim($validated['title']),
@@ -110,10 +169,13 @@ new #[Title('Catatan')] class extends Component
         ];
 
         if ($this->editingId) {
-            auth()->user()->notes()->findOrFail($this->editingId)->update($attributes);
+            $note = auth()->user()->notes()->findOrFail($this->editingId);
+            $note->update($attributes);
         } else {
-            auth()->user()->notes()->create($attributes);
+            $note = auth()->user()->notes()->create($attributes);
         }
+
+        $this->storeUploads($note);
 
         $this->closeForm();
         $this->dispatch('toast', message: 'Catatan disimpan');
@@ -136,7 +198,8 @@ new #[Title('Catatan')] class extends Component
     private function resetForm(): void
     {
         $this->resetValidation();
-        $this->reset(['editingId', 'title', 'body', 'goal_id', 'is_pinned']);
+        $this->reset(['editingId', 'title', 'body', 'goal_id', 'is_pinned', 'uploads']);
+        unset($this->editingAttachments);
     }
 };
 ?>
@@ -179,6 +242,9 @@ new #[Title('Catatan')] class extends Component
                         @if ($note->goal)
                             <span class="inline-flex items-center gap-1"><span class="size-2 rounded-full" style="background-color: {{ $note->goal->color }}"></span>{{ $note->goal->label() }}</span>
                         @endif
+                        @if ($note->attachments_count)
+                            <span class="font-semibold">📎 {{ $note->attachments_count }}</span>
+                        @endif
                         <span>{{ $note->updated_at->diffForHumans() }}</span>
                     </span>
                 </button>
@@ -201,6 +267,50 @@ new #[Title('Catatan')] class extends Component
                 <label class="label" for="note-body">Isi</label>
                 <textarea id="note-body" wire:model="body" rows="10" class="input" placeholder="Tulis bebas…"></textarea>
                 @error('body') <p class="error">{{ $message }}</p> @enderror
+            </div>
+
+            {{-- Lampiran --}}
+            <div>
+                <span class="label">Lampiran</span>
+                @if ($this->editingAttachments->isNotEmpty())
+                    <ul class="mb-2 space-y-1.5">
+                        @foreach ($this->editingAttachments as $attachment)
+                            <li wire:key="att-{{ $attachment->id }}" class="flex items-center gap-2 rounded-2xl border border-line p-2">
+                                @if ($attachment->isImage())
+                                    <img src="{{ route('attachments.show', ['attachment' => $attachment, 'inline' => 1]) }}" alt="" class="size-10 shrink-0 rounded-xl object-cover" loading="lazy">
+                                @else
+                                    <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-surface-2 text-[10px] font-extrabold text-muted uppercase">{{ pathinfo($attachment->original_name, PATHINFO_EXTENSION) ?: 'file' }}</span>
+                                @endif
+                                <a href="{{ route('attachments.show', ['attachment' => $attachment, 'inline' => $attachment->canPreview() ? 1 : null]) }}" target="_blank" rel="noopener" class="min-w-0 flex-1">
+                                    <span class="block truncate text-sm font-semibold hover:underline">{{ $attachment->original_name }}</span>
+                                    <span class="block text-xs text-muted">{{ NoteAttachment::formatSize($attachment->size) }}</span>
+                                </a>
+                                <button type="button" class="rounded-lg p-1.5 text-muted hover:bg-danger/10 hover:text-danger" wire:click="deleteAttachment({{ $attachment->id }})" wire:confirm="Hapus lampiran ini?" aria-label="Hapus lampiran">
+                                    <x-icon name="trash" class="size-4" />
+                                </button>
+                            </li>
+                        @endforeach
+                    </ul>
+                @endif
+
+                @foreach ($uploads as $index => $upload)
+                    <div wire:key="upload-{{ $index }}" class="mb-1.5 flex items-center gap-2 rounded-2xl bg-brand-soft/40 p-2 text-sm">
+                        <x-icon name="upload" class="size-4 text-brand" />
+                        <span class="min-w-0 flex-1 truncate">{{ $upload->getClientOriginalName() }}</span>
+                        <span class="text-xs text-muted">{{ NoteAttachment::formatSize($upload->getSize()) }}</span>
+                        <button type="button" class="rounded-lg p-1 text-muted hover:text-danger" wire:click="removeUpload({{ $index }})" aria-label="Batalkan file"><x-icon name="x" class="size-4" /></button>
+                    </div>
+                @endforeach
+
+                <label class="flex cursor-pointer items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-line p-3 text-sm font-semibold text-muted transition hover:border-brand/50 hover:text-ink">
+                    <x-icon name="upload" class="size-4" />
+                    <span wire:loading.remove wire:target="uploads">Tambah file (PDF, gambar, dokumen…)</span>
+                    <span wire:loading wire:target="uploads">Mengunggah…</span>
+                    <input type="file" wire:model="uploads" multiple class="sr-only" accept=".{{ implode(',.', NoteAttachment::ALLOWED_EXTENSIONS) }}">
+                </label>
+                @error('uploads') <p class="error">{{ $message }}</p> @enderror
+                @error('uploads.*') <p class="error">{{ $message }}</p> @enderror
+                <p class="mt-1 text-xs text-muted">Maks. {{ round(config('app.attachments.max_file_kb') / 1024) }} MB per file · kuota {{ config('app.attachments.quota_mb') }} MB per akun. File tersimpan privat.</p>
             </div>
             <div class="grid grid-cols-[1fr_auto] items-end gap-3">
                 <div>

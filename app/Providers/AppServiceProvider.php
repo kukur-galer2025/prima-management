@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Services\WebPush;
 use Illuminate\Auth\Notifications\ResetPassword;
+use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Foundation\DevCommands;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\ServiceProvider;
@@ -37,6 +38,14 @@ class AppServiceProvider extends ServiceProvider
             ->action('Atur ulang kata sandi', route('password.reset', ['token' => $token, 'email' => $notifiable->getEmailForPasswordReset()]))
             ->line('Tautan ini berlaku selama '.config('auth.passwords.users.expire').' menit.')
             ->line('Kalau kamu tidak meminta ini, abaikan saja email ini.')
+            ->salutation('Salam, Prima Management'));
+
+        VerifyEmail::toMailUsing(fn (object $notifiable, string $url) => (new MailMessage)
+            ->subject('Verifikasi email akun Prima Management')
+            ->greeting('Halo, '.$notifiable->name.'!')
+            ->line('Terima kasih sudah mendaftar. Klik tombol di bawah untuk memverifikasi alamat emailmu.')
+            ->action('Verifikasi email', $url)
+            ->line('Kalau kamu tidak membuat akun, abaikan saja email ini.')
             ->salutation('Salam, Prima Management'));
     }
 }

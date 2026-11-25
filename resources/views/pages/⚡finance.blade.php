@@ -361,8 +361,8 @@ new #[Title('Keuangan')] class extends Component
     {{-- Per kategori + anggaran per kategori --}}
     <section class="card">
         <div class="mb-3 flex items-center justify-between gap-2">
-            <h2 class="section-title">Pengeluaran per kategori</h2>
-            <button class="link" wire:click="openBudget('')">+ Anggaran kategori</button>
+            <h2 class="section-title min-w-0">Per kategori</h2>
+            <button class="link shrink-0" wire:click="openBudget('')">+ Anggaran</button>
         </div>
         @forelse ($summary['categories'] as $categoryName => $total)
             @php

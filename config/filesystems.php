@@ -38,6 +38,17 @@ return [
             'report' => false,
         ],
 
+        /*
+         * Tujuan backup database. Arahkan BACKUP_PATH ke folder yang disinkron ke cloud
+         * (mis. folder Google Drive / OneDrive di komputer) agar backup tersimpan di luar server.
+         */
+        'backups' => [
+            'driver' => 'local',
+            'root' => env('BACKUP_PATH') ?: storage_path('app/private/backups'),
+            'throw' => true,
+            'report' => false,
+        ],
+
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),
