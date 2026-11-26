@@ -177,6 +177,7 @@ Ganti `USER` dengan Site User dan `DOMAIN` dengan domainmu.
 
 ### Catatan
 
+- `deploy.sh` mempublikasikan JavaScript Livewire ke `public/vendor/livewire` (Nginx CloudPanel melayani `*.js` langsung dari disk). Kalau deploy manual, jalankan `php artisan vendor:publish --tag=livewire:assets --force`.
 - `php artisan app:preflight` memeriksa kesiapan produksi kapan saja. `/up` mengecek database & storage; pasang di pemantau uptime.
 - `RELOAD_COMMAND="sudo systemctl reload php8.4-fpm"` (bila user boleh sudo) membuat rilis baru tersaji seketika. Tanpa itu, skrip menunggu sampai PHP memakai rilis baru (bisa sampai ±2 menit).
 - Rollback mengembalikan kode, bukan struktur database. Karena itu migrasi sebaiknya hanya **menambah** tabel/kolom; hapus kolom lama di rilis berikutnya. Untuk memulihkan data, pakai file di `BACKUP_PATH`.

@@ -34,6 +34,7 @@ class Preflight
         $check(! config('app.debug'), 'APP_DEBUG=false', 'APP_DEBUG masih true: detail error (termasuk rahasia) akan terlihat pengunjung');
         $check(str_starts_with((string) config('app.url'), 'https://'), 'APP_URL memakai https', 'APP_URL harus https:// (login, PWA, push, dan Telegram membutuhkannya)');
         $check(is_file(public_path('build/manifest.json')), 'Aset frontend sudah di-build', 'public/build/manifest.json tidak ada. Jalankan: npm ci && npm run build');
+        $check(is_file(public_path('vendor/livewire/manifest.json')), 'JavaScript Livewire tersedia sebagai file statis', 'Jalankan: php artisan vendor:publish --tag=livewire:assets --force (tanpanya tombol & form bisa tidak berfungsi di Nginx)');
         $check(! is_file(public_path('hot')), 'Tidak ada sisa Vite dev server', 'File public/hot masih ada: tampilan akan rusak karena mencari Vite dev server');
 
         foreach (['framework/views', 'framework/cache', 'logs', 'app/private'] as $folder) {

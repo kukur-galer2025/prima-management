@@ -50,13 +50,17 @@ activate() {
     if [ -n "$RELOAD_COMMAND" ]; then bash -c "$RELOAD_COMMAND"; fi
 }
 
-# Status 200 saja tidak cukup (peringatan PHP pun bisa berstatus 200), jadi isi halamannya ikut diperiksa.
+# Status 200 saja tidak cukup (peringatan PHP pun bisa berstatus 200), jadi isi halamannya ikut diperiksa,
+# termasuk file JavaScript Livewire: tanpanya halaman tampil tapi tidak ada tombol yang berfungsi.
 healthy() {
     local base=$1 page bad=0 good=0 deadline=$((SECONDS + ${2:-30}))
     while [ $SECONDS -lt $deadline ]; do
         if curl -fsS -o /dev/null --max-time 15 "$base/up" 2>/dev/null \
             && page=$(curl -fsS -i --max-time 15 "$base/login" 2>/dev/null) \
-            && [[ $page == *wire:snapshot* && $page == *'id="password"'* && $page == *'</html>'* ]]; then
+            && [[ $page == *wire:snapshot* && $page == *'id="password"'* && $page == *'</html>'* ]] \
+            && script=$(grep -o 'src="[^"]*livewire[^"]*\.js[^"]*"' <<<"$page" | head -n 1 | sed 's/^src="//; s/"$//; s/&amp;/\&/g') \
+            && [ -n "$script" ] && case "$script" in http*) ;; *) script="$base$script" ;; esac \
+            && curl -fsS -o /dev/null --max-time 15 "$script" 2>/dev/null; then
             # PHP bisa masih menyajikan rilis lama beberapa saat (realpath cache), jadi tunggu sampai rilis BARU
             # yang menjawab beberapa kali berturut-turut.
             if [[ ${page,,} == *"x-release: $(basename "$RELEASE")"* ]]; then good=$((good + 1)); else good=0; fi
@@ -124,6 +128,9 @@ say "Memasang dependensi & membangun aset"
 npm ci --silent --no-audit --no-fund
 npm run build --silent
 rm -rf node_modules
+# JS Livewire sebagai file statis: banyak konfigurasi Nginx (termasuk CloudPanel) melayani semua *.js langsung
+# dari disk, sehingga versi yang disajikan lewat PHP berakhir 404 dan seluruh tombol/form tidak berfungsi.
+"$PHP_BIN" artisan vendor:publish --tag=livewire:assets --force --no-ansi >/dev/null
 
 say "Memeriksa konfigurasi database"
 config_value() { "$PHP_BIN" artisan tinker --execute="echo config('$1');" | tr -d '\r' | tail -n 1; }
