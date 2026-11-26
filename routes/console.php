@@ -80,10 +80,19 @@ Artisan::command('app:reminder-status', function (Telegram $telegram) {
     }
 
     $this->newLine();
-    $this->table(['Akun', 'Telegram', 'Perangkat push', 'Pengingat 24 jam'], User::query()->whereNull('disabled_at')->withCount('pushSubscriptions')->get()->map(fn (User $user) => [
+    // Jenis perangkat ditebak dari layanan push browsernya.
+    $deviceLabel = fn (string $endpoint): string => match (true) {
+        str_contains($endpoint, 'push.apple.com') => 'Apple (iPhone/iPad/Mac)',
+        str_contains($endpoint, 'fcm.googleapis.com') => 'Chrome/Android',
+        str_contains($endpoint, 'mozilla.com') => 'Firefox',
+        str_contains($endpoint, 'notify.windows.com') => 'Edge/Windows',
+        default => (string) parse_url($endpoint, PHP_URL_HOST),
+    };
+
+    $this->table(['Akun', 'Telegram', 'Perangkat push', 'Pengingat 24 jam'], User::query()->whereNull('disabled_at')->with('pushSubscriptions')->get()->map(fn (User $user) => [
         $user->email,
         $user->hasTelegram() ? 'tersambung' : '-',
-        $user->push_subscriptions_count,
+        $user->pushSubscriptions->map(fn ($subscription) => $deviceLabel($subscription->endpoint).' sejak '.$subscription->created_at->format('d M H:i'))->implode("\n") ?: '-',
         $user->reminders()->where('created_at', '>=', now()->subDay())->count(),
     ]));
 

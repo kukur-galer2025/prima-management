@@ -81,8 +81,6 @@ new #[Title('Akun')] class extends Component
     }
     public string $name = '';
 
-    public string $email = '';
-
     public string $current_password = '';
 
     public string $password = '';
@@ -98,7 +96,6 @@ new #[Title('Akun')] class extends Component
         $user = auth()->user();
 
         $this->name = $user->name;
-        $this->email = $user->email;
         $this->weekly_target_hours = $user->weekly_target_minutes ? round($user->weekly_target_minutes / 60, 1) : null;
         $this->monthly_budget = $user->monthly_budget ? (string) $user->monthly_budget : '';
     }
@@ -109,16 +106,14 @@ new #[Title('Akun')] class extends Component
         return auth()->user()->pushSubscriptions()->count();
     }
 
+    /** Email dipakai untuk login dan hanya bisa diubah admin, jadi di sini cukup nama. */
     public function saveProfile(): void
     {
-        $user = auth()->user();
-
         $validated = $this->validate([
             'name' => ['required', 'string', 'max:100'],
-            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
         ], [], ['name' => 'nama']);
 
-        $user->update($validated);
+        auth()->user()->update($validated);
 
         $this->dispatch('toast', message: 'Profil disimpan');
     }
@@ -304,8 +299,8 @@ new #[Title('Akun')] class extends Component
             </div>
             <div>
                 <label class="label" for="email">Email</label>
-                <input id="email" type="email" wire:model="email" class="input" autocomplete="email">
-                @error('email') <p class="error">{{ $message }}</p> @enderror
+                <input id="email" type="email" value="{{ auth()->user()->email }}" class="input cursor-not-allowed opacity-70" disabled aria-describedby="email-locked">
+                <p id="email-locked" class="mt-1 text-xs text-muted">🔒 Email dipakai untuk login dan hanya bisa diubah oleh admin.</p>
             </div>
             <button class="btn btn-primary w-full" wire:loading.attr="disabled" wire:target="saveProfile">Simpan profil</button>
         </form>

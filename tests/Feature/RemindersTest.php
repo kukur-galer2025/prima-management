@@ -129,9 +129,11 @@ class RemindersTest extends TestCase
     {
         $user = User::factory()->create(['email' => 'cek@example.test', 'telegram_chat_id' => '555']);
         $user->reminders()->create(['key' => 'x', 'title' => 'Uji pengingat', 'body' => '-', 'url' => '/']);
+        PushSubscription::factory()->for($user)->create(['endpoint' => 'https://web.push.apple.com/abc']);
 
         $this->artisan('app:reminder-status')
             ->expectsOutputToContain('BELUM PERNAH')
+            ->expectsOutputToContain('Apple (iPhone/iPad/Mac)')
             ->expectsOutputToContain('Uji pengingat')
             ->assertSuccessful();
     }

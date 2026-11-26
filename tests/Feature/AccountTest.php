@@ -8,6 +8,7 @@ use App\Models\StudySession;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Livewire\Exceptions\PublicPropertyNotFoundException;
 use Livewire\Livewire;
 use Tests\TestCase;
 
@@ -15,23 +16,23 @@ class AccountTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_profile_can_be_updated_but_email_must_be_unique(): void
+    public function test_name_can_be_updated_but_email_is_locked_for_the_user(): void
     {
-        User::factory()->create(['email' => 'dipakai@example.com']);
-        $user = User::factory()->create();
+        $user = User::factory()->create(['email' => 'tetap@example.com']);
 
         Livewire::actingAs($user)
             ->test('pages::account')
+            ->assertSee('hanya bisa diubah oleh admin')
             ->set('name', 'Prima Dzaky')
-            ->set('email', 'dipakai@example.com')
-            ->call('saveProfile')
-            ->assertHasErrors('email')
-            ->set('email', 'baru@example.com')
             ->call('saveProfile')
             ->assertHasNoErrors();
 
         $this->assertSame('Prima Dzaky', $user->fresh()->name);
-        $this->assertSame('baru@example.com', $user->fresh()->email);
+        $this->assertSame('tetap@example.com', $user->fresh()->email);
+
+        // Mengirim isian email lewat request yang dimanipulasi tetap tidak bisa mengubahnya.
+        $this->expectException(PublicPropertyNotFoundException::class);
+        Livewire::actingAs($user)->test('pages::account')->set('email', 'baru@example.com');
     }
 
     public function test_password_change_requires_the_current_password(): void
