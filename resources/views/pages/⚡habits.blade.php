@@ -276,7 +276,7 @@ new #[Title('Kebiasaan')] class extends Component
             <div>
                 <label class="label" for="habit-remind">Ingatkan jam (opsional)</label>
                 <div class="flex items-center gap-2">
-                    <input id="habit-remind" type="time" wire:model="remind_at" class="input w-36">
+                    <x-date-input type="time" id="habit-remind" wire:model="remind_at" wrapper-class="w-36" placeholder="mis. 06:00" />
                     @if ($remind_at)
                         <button type="button" class="text-xs font-bold text-muted hover:text-ink" wire:click="$set('remind_at', null)">Hapus</button>
                     @endif

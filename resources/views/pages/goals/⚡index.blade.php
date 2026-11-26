@@ -35,6 +35,8 @@ new #[Title('Target')] class extends Component
 
     public ?string $deadline = null;
 
+    public ?string $deadline_time = null;
+
     public int $priority = 2;
 
     public string $goalStatus = 'active';
@@ -97,6 +99,7 @@ new #[Title('Target')] class extends Component
         $this->color = $goal->color;
         $this->target_hours = $goal->target_hours;
         $this->deadline = $goal->deadline?->toDateString();
+        $this->deadline_time = $goal->deadline_time;
         $this->priority = $goal->priority;
         $this->goalStatus = $goal->status;
         $this->showForm = true;
@@ -117,11 +120,12 @@ new #[Title('Target')] class extends Component
             'icon' => ['nullable', 'string', 'max:16'],
             'color' => ['required', 'regex:/^#[0-9a-fA-F]{6}$/'],
             'target_hours' => ['nullable', 'integer', 'min:1', 'max:10000'],
-            'deadline' => ['nullable', 'date'],
+            'deadline' => ['nullable', 'date', 'required_with:deadline_time'],
+            'deadline_time' => ['nullable', 'date_format:H:i'],
             'priority' => ['required', Rule::in(array_keys(Goal::PRIORITIES))],
             'goalStatus' => ['required', Rule::in(array_keys(Goal::STATUSES))],
             'initialTopics' => ['nullable', 'string', 'max:5000'],
-        ]);
+        ], ['deadline.required_with' => 'Isi tanggal deadline bila memakai jam.'], ['deadline_time' => 'jam deadline']);
 
         $attributes = [
             'name' => $validated['name'],
@@ -131,6 +135,7 @@ new #[Title('Target')] class extends Component
             'color' => $validated['color'],
             'target_hours' => filled($validated['target_hours']) ? (int) $validated['target_hours'] : null,
             'deadline' => $validated['deadline'] ?: null,
+            'deadline_time' => $validated['deadline'] && $validated['deadline_time'] ? $validated['deadline_time'] : null,
             'priority' => $validated['priority'],
             'status' => $validated['goalStatus'],
         ];
@@ -180,7 +185,7 @@ new #[Title('Target')] class extends Component
     private function resetForm(): void
     {
         $this->resetValidation();
-        $this->reset(['editingId', 'name', 'category', 'description', 'icon', 'color', 'target_hours', 'deadline', 'priority', 'goalStatus', 'initialTopics']);
+        $this->reset(['editingId', 'name', 'category', 'description', 'icon', 'color', 'target_hours', 'deadline', 'deadline_time', 'priority', 'goalStatus', 'initialTopics']);
     }
 };
 ?>
@@ -250,7 +255,7 @@ new #[Title('Target')] class extends Component
                         @if ($goal->isOverdue())
                             <span class="chip bg-danger/10 text-danger"><x-icon name="flag" class="size-3" /> Lewat {{ abs($goal->daysLeft()) }} hari</span>
                         @elseif (! is_null($goal->daysLeft()) && $goal->daysLeft() >= 0)
-                            <span class="chip bg-brand-soft text-brand-ink"><x-icon name="flag" class="size-3" /> {{ $goal->daysLeft() }} hari lagi</span>
+                            <span class="chip bg-brand-soft text-brand-ink" title="Deadline {{ $goal->deadlineLabel() }}"><x-icon name="flag" class="size-3" /> {{ $goal->daysLeft() === 0 ? 'Hari ini' : $goal->daysLeft().' hari lagi' }}{{ $goal->deadline_time ? ' · '.$goal->deadline_time : '' }}</span>
                         @endif
                     </div>
                     <x-progress :value="$goal->progress()" :color="$goal->color" />
@@ -307,8 +312,13 @@ new #[Title('Target')] class extends Component
                 </div>
                 <div>
                     <label class="label" for="deadline">Deadline / tanggal ujian</label>
-                    <input id="deadline" type="date" wire:model="deadline" class="input">
+                    <x-date-input id="deadline" wire:model="deadline" />
                     @error('deadline') <p class="error">{{ $message }}</p> @enderror
+                </div>
+                <div>
+                    <label class="label" for="deadline_time">Jam (opsional)</label>
+                    <x-date-input type="time" id="deadline_time" wire:model="deadline_time" placeholder="mis. 08:00" />
+                    @error('deadline_time') <p class="error">{{ $message }}</p> @enderror
                 </div>
                 <div>
                     <label class="label" for="target_hours">Target jam fokus</label>

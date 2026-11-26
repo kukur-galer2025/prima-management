@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-#[Fillable(['name', 'category', 'description', 'icon', 'color', 'target_hours', 'deadline', 'priority', 'status'])]
+#[Fillable(['name', 'category', 'description', 'icon', 'color', 'target_hours', 'deadline', 'deadline_time', 'priority', 'status'])]
 class Goal extends Model
 {
     /** @use HasFactory<GoalFactory> */
@@ -109,6 +109,12 @@ class Goal extends Model
             'recentPerDay' => $recentPerDay,
             'onTrack' => $recentPerDay >= $perDay,
         ];
+    }
+
+    /** "20 Des 2026" atau "20 Des 2026 · 08:00". */
+    public function deadlineLabel(string $format = 'd M Y'): ?string
+    {
+        return $this->deadline ? $this->deadline->translatedFormat($format).($this->deadline_time ? ' · '.$this->deadline_time : '') : null;
     }
 
     public function isOverdue(): bool

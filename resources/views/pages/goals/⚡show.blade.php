@@ -230,7 +230,7 @@ new class extends Component
             </div>
             <div>
                 <p class="text-lg font-extrabold">{{ is_null($daysLeft) ? '–' : ($daysLeft < 0 ? 'Lewat' : $daysLeft) }}</p>
-                <p class="text-xs opacity-80">{{ $goal->deadline ? 'hari · '.$goal->deadline->translatedFormat('d M Y') : 'tanpa deadline' }}</p>
+                <p class="text-xs opacity-80">{{ $goal->deadline ? 'hari · '.$goal->deadlineLabel() : 'tanpa deadline' }}</p>
             </div>
         </div>
 
@@ -357,7 +357,7 @@ new class extends Component
             @endforeach
             <form wire:submit="addTask" class="flex gap-2 p-2">
                 <input wire:model="newTask" class="input min-w-0 py-2" placeholder="Tambah tugas…" aria-label="Tugas baru">
-                <input type="date" wire:model="newTaskDue" class="input w-36 max-w-[45%] shrink-0 py-2" aria-label="Tenggat">
+                <x-date-input wire:model="newTaskDue" wrapper-class="w-36 max-w-[45%] shrink-0" class="py-2" placeholder="Tenggat" aria-label="Tenggat" />
                 <button class="btn btn-ghost px-3" aria-label="Tambah tugas"><x-icon name="plus" class="size-4" /></button>
             </form>
         </div>

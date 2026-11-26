@@ -3,7 +3,9 @@
 namespace App\Services;
 
 use App\Models\StudySession;
+use App\Models\Transaction;
 use App\Models\User;
+use Carbon\CarbonInterface;
 
 /**
  * Ekspor seluruh data pengguna. Formatnya dibaca kembali oleh DataImporter.
@@ -46,12 +48,15 @@ class DataExporter
      *
      * @param  resource  $output
      */
-    public function writeSessionsCsv(User $user, $output): void
+    public function writeSessionsCsv(User $user, $output, ?CarbonInterface $from = null, ?CarbonInterface $to = null): void
     {
         fwrite($output, "\xEF\xBB\xBF");
         fputcsv($output, ['Tanggal', 'Target', 'Materi', 'Menit', 'Skor', 'Catatan'], escape: '');
 
-        $user->studySessions()->with(['goal', 'topic'])->orderBy('studied_on')->orderBy('id')
+        $user->studySessions()->with(['goal', 'topic'])
+            ->when($from, fn ($query) => $query->whereDate('studied_on', '>=', $from))
+            ->when($to, fn ($query) => $query->whereDate('studied_on', '<=', $to))
+            ->orderBy('studied_on')->orderBy('id')
             ->each(fn (StudySession $session) => fputcsv($output, [
                 $session->studied_on->toDateString(),
                 $session->goal?->name,
@@ -59,6 +64,31 @@ class DataExporter
                 $session->minutes,
                 is_null($session->score) ? '' : StudySession::formatScore($session->score),
                 $session->notes,
+            ], escape: ''));
+    }
+
+    /**
+     * Tulis transaksi sebagai CSV yang bisa dibuka di Excel (pemasukan positif, pengeluaran negatif).
+     *
+     * @param  resource  $output
+     */
+    public function writeTransactionsCsv(User $user, $output, ?CarbonInterface $from = null, ?CarbonInterface $to = null): void
+    {
+        fwrite($output, "\xEF\xBB\xBF");
+        fputcsv($output, ['Tanggal', 'Jenis', 'Kategori', 'Nominal', 'Dompet', 'Keterangan', 'Rutin'], escape: '');
+
+        $user->transactions()->with('wallet')
+            ->when($from, fn ($query) => $query->whereDate('occurred_on', '>=', $from))
+            ->when($to, fn ($query) => $query->whereDate('occurred_on', '<=', $to))
+            ->orderBy('occurred_on')->orderBy('id')
+            ->each(fn (Transaction $transaction) => fputcsv($output, [
+                $transaction->occurred_on->toDateString(),
+                Transaction::TYPES[$transaction->type] ?? $transaction->type,
+                $transaction->category,
+                $transaction->isIncome() ? $transaction->amount : -$transaction->amount,
+                $transaction->wallet?->name,
+                $transaction->notes,
+                $transaction->recurring_transaction_id ? 'ya' : '',
             ], escape: ''));
     }
 }

@@ -354,8 +354,8 @@ new #[Title('Tugas')] class extends Component
                     <option value="{{ $goal->id }}">{{ $goal->label() }}</option>
                 @endforeach
             </select>
-            <input type="date" wire:model="due_date" class="input min-w-0 py-2 text-sm sm:w-36 sm:shrink-0" aria-label="Tenggat" @if ($showForm) disabled @endif>
-            <input type="time" wire:model="due_time" class="input min-w-0 py-2 text-sm sm:w-28 sm:shrink-0" aria-label="Jam (opsional)" @if ($showForm) disabled @endif>
+            <x-date-input wire:model="due_date" wrapper-class="sm:w-36 sm:shrink-0" class="py-2 text-sm" placeholder="Tanggal tenggat" aria-label="Tenggat" :disabled="$showForm" />
+            <x-date-input type="time" wire:model="due_time" wrapper-class="sm:w-28 sm:shrink-0" class="py-2 text-sm" placeholder="Jam tenggat" aria-label="Jam tenggat (opsional)" :disabled="$showForm" />
         </div>
         @if (! $showForm) @error('due_date') <p class="error">{{ $message }}</p> @enderror @endif
         <div class="grid grid-cols-2 gap-2 sm:flex">
@@ -511,12 +511,12 @@ new #[Title('Tugas')] class extends Component
                 </div>
                 <div>
                     <label class="label" for="edit-due">Tenggat</label>
-                    <input id="edit-due" type="date" wire:model="due_date" class="input">
+                    <x-date-input id="edit-due" wire:model="due_date" />
                     @error('due_date') <p class="error">{{ $message }}</p> @enderror
                 </div>
                 <div>
-                    <label class="label" for="edit-time">Jam (opsional)</label>
-                    <input id="edit-time" type="time" wire:model="due_time" class="input">
+                    <label class="label" for="edit-time">Jam tenggat (opsional)</label>
+                    <x-date-input type="time" id="edit-time" wire:model="due_time" placeholder="mis. 23:59" />
                     @error('due_time') <p class="error">{{ $message }}</p> @enderror
                 </div>
                 <div class="flex items-end pb-3 text-xs text-muted">Notifikasi dikirim 10 menit sebelum jam tenggat.</div>

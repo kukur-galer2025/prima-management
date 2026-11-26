@@ -197,6 +197,62 @@ body {
     }
 }
 
+/* Cetak / simpan PDF (Laporan bulanan): latar putih, tanpa bayangan, kartu tidak terpotong antar halaman. */
+@media print {
+    @page {
+        margin: 14mm;
+    }
+
+    html,
+    body {
+        background: #fff !important;
+        color: #111 !important;
+    }
+
+    .card,
+    .hero {
+        box-shadow: none !important;
+        break-inside: avoid;
+    }
+}
+
+/*
+ * Safari iOS: kolom tanggal/jam punya lebar minimum sendiri sehingga menabrak kolom sebelahnya,
+ * dan kolom kosong tampil polos. Gaya bawaannya dimatikan lalu petunjuk ditampilkan lewat .date-placeholder.
+ */
+.date-placeholder {
+    display: none;
+}
+
+@supports (-webkit-touch-callout: none) {
+    input[type='date'],
+    input[type='time'],
+    input[type='datetime-local'] {
+        -webkit-appearance: none;
+        appearance: none;
+        display: block;
+        min-width: 0;
+        min-height: 2.75rem;
+        text-align: left;
+    }
+
+    input::-webkit-date-and-time-value {
+        text-align: left;
+    }
+
+    .date-placeholder {
+        display: block;
+        position: absolute;
+        top: 50%;
+        left: 0.9rem;
+        transform: translateY(-50%);
+        pointer-events: none;
+        color: var(--muted);
+        font-size: 1rem;
+        opacity: 0.75;
+    }
+}
+
 /* Pengaman: halaman tidak boleh bisa digeser ke samping di HP. */
 html,
 body {

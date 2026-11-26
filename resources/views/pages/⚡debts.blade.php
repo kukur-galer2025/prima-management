@@ -362,7 +362,7 @@ new #[Title('Utang & piutang')] class extends Component
                 </div>
                 <div>
                     <label class="label" for="debt-due">Jatuh tempo</label>
-                    <input id="debt-due" type="date" wire:model="due_on" class="input">
+                    <x-date-input id="debt-due" wire:model="due_on" />
                     @error('due_on') <p class="error">{{ $message }}</p> @enderror
                 </div>
             </div>

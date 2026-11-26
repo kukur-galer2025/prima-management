@@ -38,7 +38,13 @@ class CalendarFeed
             $lines = [...$lines, ...$this->event(
                 "goal-{$goal->id}@{$host}",
                 $stamp,
-                ['DTSTART;VALUE=DATE:'.$goal->deadline->format('Ymd'), 'DTEND;VALUE=DATE:'.$goal->deadline->copy()->addDay()->format('Ymd')],
+                $goal->deadline_time
+                    ? (function () use ($goal, $timezone) {
+                        $start = CarbonImmutable::parse($goal->deadline->toDateString().' '.$goal->deadline_time, $timezone);
+
+                        return ["DTSTART;TZID={$timezone}:".$start->format('Ymd\THis'), "DTEND;TZID={$timezone}:".$start->addHour()->format('Ymd\THis')];
+                    })()
+                    : ['DTSTART;VALUE=DATE:'.$goal->deadline->format('Ymd'), 'DTEND;VALUE=DATE:'.$goal->deadline->copy()->addDay()->format('Ymd')],
                 '🎯 Deadline: '.$goal->name,
                 $goal->description,
             )];

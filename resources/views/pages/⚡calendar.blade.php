@@ -233,7 +233,7 @@ new #[Title('Kalender')] class extends Component
         @foreach ($detail['deadlines'] as $goal)
             <a href="{{ route('goals.show', $goal) }}" wire:navigate wire:key="detail-goal-{{ $goal->id }}" class="card card-hover flex items-center gap-3 py-3" style="border-color: {{ $goal->color }}">
                 <span class="icon-tile" style="background-color: color-mix(in oklab, {{ $goal->color }} 18%, transparent); color: {{ $goal->color }}"><x-icon name="flag" /></span>
-                <span><span class="block text-xs font-bold text-muted">Deadline target</span><span class="block font-bold">{{ $goal->label() }}</span></span>
+                <span><span class="block text-xs font-bold text-muted">Deadline target{{ $goal->deadline_time ? ' · '.$goal->deadline_time : '' }}</span><span class="block font-bold">{{ $goal->label() }}</span></span>
             </a>
         @endforeach
 

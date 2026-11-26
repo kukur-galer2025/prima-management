@@ -306,7 +306,7 @@ new #[Title('Tabungan')] class extends Component
                 </div>
                 <div>
                     <label class="label" for="saving-deadline">Tenggat (opsional)</label>
-                    <input id="saving-deadline" type="date" wire:model="deadline" class="input">
+                    <x-date-input id="saving-deadline" wire:model="deadline" />
                     @error('deadline') <p class="error">{{ $message }}</p> @enderror
                 </div>
             </div>

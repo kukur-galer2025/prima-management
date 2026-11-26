@@ -59,6 +59,7 @@ class DataImporter
                     'color' => preg_match('/^#[0-9a-fA-F]{6}$/', (string) ($row['color'] ?? '')) ? $row['color'] : '#7c3aed',
                     'target_hours' => $row['target_hours'] ?? null,
                     'deadline' => $this->date($row['deadline'] ?? null),
+                    'deadline_time' => preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', (string) ($row['deadline_time'] ?? '')) ? $row['deadline_time'] : null,
                     'priority' => (int) ($row['priority'] ?? 2),
                     'status' => in_array($row['status'] ?? null, ['active', 'paused', 'done'], true) ? $row['status'] : 'active',
                 ]);

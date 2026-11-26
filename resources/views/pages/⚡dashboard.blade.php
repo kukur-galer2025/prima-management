@@ -575,7 +575,7 @@ new #[Title('Beranda')] class extends Component
                         <div class="min-w-0">
                             <p class="truncate text-sm font-bold">{{ $goal->label() }}</p>
                             <p @class(['text-xs', 'text-danger' => $goal->isOverdue(), 'text-muted' => !$goal->isOverdue()])>
-                                {{ $goal->isOverdue() ? 'Deadline terlewat · perbarui tanggal atau tandai selesai' : $goal->deadline->translatedFormat('d M Y') }}
+                                {{ $goal->isOverdue() ? 'Deadline terlewat · perbarui tanggal atau tandai selesai' : $goal->deadlineLabel() }}
                             </p>
                         </div>
                     </a>

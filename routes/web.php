@@ -49,6 +49,8 @@ Route::middleware('auth')->group(function () {
     Route::livewire('/utang', 'pages::debts')->name('debts');
     Route::livewire('/catatan', 'pages::notes')->name('notes');
     Route::livewire('/statistik', 'pages::stats')->name('stats');
+    Route::livewire('/laporan', 'pages::report')->name('report');
+    Route::livewire('/cari', 'pages::search')->name('search');
     Route::livewire('/kalender', 'pages::calendar')->name('calendar');
     Route::livewire('/review', 'pages::review')->name('review');
     Route::livewire('/grup', 'pages::groups')->name('groups');

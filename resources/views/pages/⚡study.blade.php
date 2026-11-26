@@ -203,7 +203,7 @@ new #[Title('Fokus')] class extends Component
         start() { this.unlockAudio(); this.now = Date.now(); this.startedAt = this.now; this.save(); },
         pause() { this.accumulated = this.elapsed; this.startedAt = null; this.save(); },
         finish() { this.record(this.elapsed); this.startedAt = null; this.accumulated = 0; this.save(); },
-        reset() { if (confirm('Reset timer?')) { this.startedAt = null; this.accumulated = 0; this.save(); } },
+        async reset() { if (await window.primaConfirm('Reset timer? Waktu yang belum disimpan akan hilang.')) { this.startedAt = null; this.accumulated = 0; this.save(); } },
         get focusLen() { return this.presets[this.preset][0] * 60000 },
         get breakLen() { return this.presets[this.preset][1] * 60000 },
         get phaseLen() { return this.phase === 'focus' ? this.focusLen : this.breakLen },
@@ -233,7 +233,7 @@ new #[Title('Fokus')] class extends Component
             this.save();
         },
         pFinish() { this.record(this.pFocusMs); this.phase = 'focus'; this.endsAt = null; this.remaining = null; this.focusDone = 0; this.cycles = 0; this.save(); },
-        pReset() { if (confirm('Reset Pomodoro?')) { this.phase = 'focus'; this.endsAt = null; this.remaining = null; this.focusDone = 0; this.cycles = 0; this.save(); } },
+        async pReset() { if (await window.primaConfirm('Reset Pomodoro? Hitungan siklus kembali ke awal.')) { this.phase = 'focus'; this.endsAt = null; this.remaining = null; this.focusDone = 0; this.cycles = 0; this.save(); } },
         record(ms) {
             $wire.set('minutes', Math.max(1, Math.round(ms / 60000)));
             document.getElementById('log-form').scrollIntoView({ behavior: 'smooth' });

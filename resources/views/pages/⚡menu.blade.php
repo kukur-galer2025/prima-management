@@ -21,6 +21,8 @@ new #[Title('Lainnya')] class extends Component
             ['route' => 'debts', 'icon' => 'handshake', 'label' => 'Utang & piutang', 'description' => 'Pinjaman, cicilan, dan jatuh tempo'],
             ['route' => 'notes', 'icon' => 'note', 'label' => 'Catatan', 'description' => 'Ringkasan materi, ide, dan link'],
             ['route' => 'groups', 'icon' => 'users', 'label' => 'Grup', 'description' => 'Papan fokus mingguan bersama teman'],
+            ['route' => 'search', 'icon' => 'search', 'label' => 'Cari', 'description' => 'Cari tugas, catatan, transaksi, dan lainnya'],
+            ['route' => 'report', 'icon' => 'report', 'label' => 'Laporan bulanan', 'description' => 'Ringkasan sebulan, cetak/PDF & unduh Excel'],
             ['route' => 'stats', 'icon' => 'chart', 'label' => 'Statistik', 'description' => 'Tren fokus, tugas, kebiasaan, dan mood'],
             ['route' => 'account', 'icon' => 'user', 'label' => 'Akun', 'description' => 'Profil, notifikasi, Telegram, dan ekspor data'],
             auth()->user()->is_admin ? ['route' => 'admin', 'icon' => 'shield', 'label' => 'Admin', 'description' => 'Kelola akun pengguna'] : null,
