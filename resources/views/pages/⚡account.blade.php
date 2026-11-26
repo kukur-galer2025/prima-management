@@ -337,6 +337,9 @@ new #[Title('Akun')] class extends Component
     <section class="card"
         x-data="{
             supported: 'serviceWorker' in navigator && 'PushManager' in window && window.isSecureContext,
+            // iPhone/iPad hanya mengizinkan notifikasi untuk aplikasi yang dibuka dari ikon di Layar Utama.
+            ios: /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1),
+            standalone: window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches,
             permission: window.Notification?.permission ?? 'default',
             subscribed: false,
             busy: false,
@@ -393,12 +396,31 @@ new #[Title('Akun')] class extends Component
         @if (! $webPush->isConfigured())
             <p class="rounded-xl bg-surface-2 p-3 text-sm text-muted">Server belum punya kunci VAPID. Jalankan <code class="font-mono text-ink">php artisan app:vapid-keys</code> lalu salin hasilnya ke <code class="font-mono text-ink">.env</code>.</p>
         @else
-            <template x-if="! supported">
-                <p class="rounded-xl bg-surface-2 p-3 text-sm text-muted">Browser ini belum mendukung notifikasi push, atau aplikasi dibuka lewat koneksi tidak aman (http). Buka lewat https atau localhost, dan di iPhone pasang dulu ke Layar Utama.</p>
+            <template x-if="! supported && ios && ! standalone">
+                <div class="rounded-2xl bg-brand-soft/60 p-4 text-sm">
+                    <p class="font-bold">Di iPhone, notifikasi hanya bisa dari aplikasi di Layar Utama</p>
+                    <ol class="mt-2 list-decimal space-y-1 pl-5 text-muted">
+                        <li>Buka halaman ini di <b class="text-ink">Safari</b>.</li>
+                        <li>Ketuk tombol <b class="text-ink">Bagikan</b> (kotak dengan panah ke atas), lalu <b class="text-ink">Tambahkan ke Layar Utama</b>.</li>
+                        <li>Tutup Safari, buka <b class="text-ink">Prima Management dari ikon P</b> di Layar Utama.</li>
+                        <li>Kembali ke <b class="text-ink">Akun → Notifikasi pengingat</b>, lalu ketuk <b class="text-ink">Aktifkan</b>.</li>
+                    </ol>
+                    <p class="mt-2 text-xs text-muted">Butuh iOS 16.4 atau lebih baru (Pengaturan → Umum → Mengenai).</p>
+                </div>
+            </template>
+            <template x-if="! supported && ios && standalone">
+                <p class="rounded-xl bg-surface-2 p-3 text-sm text-muted">iPhone ini belum mendukung notifikasi aplikasi web. Perbarui ke iOS 16.4 atau lebih baru (Pengaturan → Umum → Pembaruan Perangkat Lunak), atau pakai pengingat lewat Telegram di bawah.</p>
+            </template>
+            <template x-if="! supported && ! ios">
+                <p class="rounded-xl bg-surface-2 p-3 text-sm text-muted">Browser ini belum mendukung notifikasi push. Coba Chrome, Edge, Firefox, atau Safari terbaru, atau pakai pengingat lewat Telegram di bawah.</p>
             </template>
             <template x-if="supported">
                 <div class="space-y-3">
-                    <p x-show="permission === 'denied'" x-cloak class="rounded-xl bg-danger/10 p-3 text-sm text-danger">Izin notifikasi diblokir. Aktifkan lagi dari pengaturan situs di browser.</p>
+                    <p x-show="permission === 'denied'" x-cloak class="rounded-xl bg-danger/10 p-3 text-sm text-danger">
+                        Izin notifikasi diblokir.
+                        <span x-show="ios">Buka <b>Pengaturan iPhone → Notifikasi → Prima Management</b>, lalu nyalakan <b>Izinkan Notifikasi</b>.</span>
+                        <span x-show="! ios">Aktifkan lagi dari pengaturan situs di browser (ikon gembok di sebelah alamat).</span>
+                    </p>
                     <div class="flex gap-2">
                         <button type="button" class="btn btn-primary flex-1" x-show="! subscribed" x-on:click="enable()" x-bind:disabled="busy || permission === 'denied'">
                             <x-icon name="bell" class="size-4" /> Aktifkan di perangkat ini
@@ -408,7 +430,7 @@ new #[Title('Akun')] class extends Component
                     </div>
                 </div>
             </template>
-            <p class="mt-3 text-xs text-muted">{{ $this->deviceCount }} perangkat menerima notifikasi. Pengingat dikirim oleh scheduler (<code class="font-mono">php artisan schedule:work</code>, sudah termasuk di <code class="font-mono">composer run dev</code>).</p>
+            <p class="mt-3 text-xs text-muted">{{ $this->deviceCount }} perangkat menerima notifikasi. Aktifkan di setiap perangkat yang ingin diberi pengingat.</p>
         @endif
     </section>
 
@@ -422,7 +444,11 @@ new #[Title('Akun')] class extends Component
         <p class="mb-4 text-sm text-muted">Pengingat yang sama dengan notifikasi push, dikirim ke chat Telegram. Lebih andal di iPhone dan tidak perlu memasang aplikasi.</p>
 
         @if (! $telegram->isConfigured())
-            <p class="rounded-xl bg-surface-2 p-3 text-sm text-muted">Bot Telegram belum diatur di server. Admin perlu mengisi <code class="font-mono text-ink">TELEGRAM_BOT_TOKEN</code> dan <code class="font-mono text-ink">TELEGRAM_BOT_USERNAME</code> di <code class="font-mono text-ink">.env</code>.</p>
+            @if (auth()->user()->is_admin)
+                <p class="rounded-xl bg-surface-2 p-3 text-sm text-muted">Bot Telegram belum diatur di server. Isi <code class="font-mono text-ink">TELEGRAM_BOT_TOKEN</code> dan <code class="font-mono text-ink">TELEGRAM_BOT_USERNAME</code> di <code class="font-mono text-ink">.env</code> (panduan di README).</p>
+            @else
+                <p class="rounded-xl bg-surface-2 p-3 text-sm text-muted">Pengingat Telegram belum tersedia. Hubungi admin bila ingin memakainya.</p>
+            @endif
         @elseif (auth()->user()->hasTelegram())
             <p class="mb-3 rounded-xl bg-success/10 p-3 text-sm font-semibold text-success">Tersambung ke {{ '@'.$telegram->botUsername() }} ✅</p>
             <div class="flex gap-2">
