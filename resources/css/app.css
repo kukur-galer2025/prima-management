@@ -178,6 +178,31 @@ body {
     }
 }
 
+/*
+ * iPhone (Safari) otomatis memperbesar halaman saat kolom isian berhuruf < 16px disentuh, dan tidak kembali.
+ * Di layar sempit semua kolom isian dipaksa 16px. Sengaja di luar @layer agar menang dari utilitas text-sm.
+ */
+@media (max-width: 639px) {
+    input:not([type='checkbox']):not([type='radio']):not([type='range']),
+    select,
+    textarea {
+        font-size: 16px;
+    }
+}
+
+/* Layar sangat sempit (mis. iPhone SE generasi pertama): isian formulir dua kolom ditumpuk satu kolom. */
+@media (max-width: 359px) {
+    form .grid.grid-cols-2:has(> div > .input) {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+/* Pengaman: halaman tidak boleh bisa digeser ke samping di HP. */
+html,
+body {
+    overflow-x: clip;
+}
+
 [x-cloak] {
     display: none !important;
 }

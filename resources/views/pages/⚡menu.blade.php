@@ -32,7 +32,7 @@ new #[Title('Lainnya')] class extends Component
 <div class="space-y-5">
     <x-page-header title="Lainnya" subtitle="Semua fitur Prima Management." icon="grid" />
 
-    <div class="grid gap-2 sm:grid-cols-2">
+    <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
         @foreach ($this->items() as $item)
             <a href="{{ route($item['route']) }}" wire:navigate wire:key="menu-{{ $item['route'] }}" class="card card-hover flex items-center gap-3 py-3">
                 <span class="icon-tile">

@@ -226,7 +226,7 @@ new #[Title('Catatan')] class extends Component
         </select>
     </div>
 
-    <div class="grid gap-3 sm:grid-cols-2">
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
         @forelse ($this->notes as $note)
             <div wire:key="note-{{ $note->id }}" class="card relative flex flex-col">
                 <button class="absolute top-3 right-3 rounded-lg p-1.5 hover:bg-surface-2" wire:click="togglePin({{ $note->id }})"

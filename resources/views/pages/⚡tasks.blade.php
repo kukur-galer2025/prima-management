@@ -347,30 +347,30 @@ new #[Title('Tugas')] class extends Component
                 @endif
             </div>
         @endif
-        <div class="flex gap-2">
-            <select wire:model="goal_id" class="input min-w-0 py-2 text-sm" aria-label="Target" @if ($showForm) disabled @endif>
+        <div class="grid grid-cols-2 gap-2 sm:flex">
+            <select wire:model="goal_id" class="input col-span-2 min-w-0 py-2 text-sm sm:flex-1" aria-label="Target" @if ($showForm) disabled @endif>
                 <option value="">Tanpa target</option>
                 @foreach ($this->goals as $goal)
                     <option value="{{ $goal->id }}">{{ $goal->label() }}</option>
                 @endforeach
             </select>
-            <input type="date" wire:model="due_date" class="input w-36 shrink-0 py-2 text-sm" aria-label="Tenggat" @if ($showForm) disabled @endif>
-            <input type="time" wire:model="due_time" class="input w-26 shrink-0 py-2 text-sm" aria-label="Jam (opsional)" @if ($showForm) disabled @endif>
+            <input type="date" wire:model="due_date" class="input min-w-0 py-2 text-sm sm:w-36 sm:shrink-0" aria-label="Tenggat" @if ($showForm) disabled @endif>
+            <input type="time" wire:model="due_time" class="input min-w-0 py-2 text-sm sm:w-28 sm:shrink-0" aria-label="Jam (opsional)" @if ($showForm) disabled @endif>
         </div>
         @if (! $showForm) @error('due_date') <p class="error">{{ $message }}</p> @enderror @endif
-        <div class="flex gap-2">
-            <select wire:model="priority" class="input min-w-0 py-2 text-sm" aria-label="Prioritas" @if ($showForm) disabled @endif>
+        <div class="grid grid-cols-2 gap-2 sm:flex">
+            <select wire:model="priority" class="input min-w-0 py-2 text-sm sm:flex-1" aria-label="Prioritas" @if ($showForm) disabled @endif>
                 @foreach (Task::PRIORITIES as $value => $label)
                     <option value="{{ $value }}">Prioritas {{ strtolower($label) }}</option>
                 @endforeach
             </select>
-            <select wire:model="recurrence" class="input min-w-0 py-2 text-sm" aria-label="Pengulangan" @if ($showForm) disabled @endif>
+            <select wire:model="recurrence" class="input min-w-0 py-2 text-sm sm:flex-1" aria-label="Pengulangan" @if ($showForm) disabled @endif>
                 <option value="">Tidak berulang</option>
                 @foreach (Task::RECURRENCES as $value => $label)
                     <option value="{{ $value }}">{{ $label }}</option>
                 @endforeach
             </select>
-            <button class="btn btn-primary shrink-0 px-3" aria-label="Tambah tugas"><x-icon name="plus" class="size-5" /></button>
+            <button class="btn btn-primary col-span-2 shrink-0 sm:px-3" aria-label="Tambah tugas"><x-icon name="plus" class="size-5" /><span class="sm:hidden">Tambah tugas</span></button>
         </div>
     </form>
 

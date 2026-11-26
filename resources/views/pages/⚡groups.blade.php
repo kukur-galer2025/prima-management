@@ -377,7 +377,7 @@ new #[Title('Grup')] class extends Component
     @endif
 
     {{-- Buat / gabung --}}
-    <div class="grid gap-3 sm:grid-cols-2">
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <form wire:submit="createGroup" class="card space-y-3">
             <h2 class="section-title">Buat grup baru</h2>
             <input wire:model="newGroupName" class="input" placeholder="mis. Pejuang TOEFL 2027" aria-label="Nama grup">

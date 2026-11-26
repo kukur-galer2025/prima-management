@@ -6,7 +6,7 @@
 </head>
 
 <body class="min-h-dvh bg-bg font-sans text-ink antialiased">
-    <div class="grid min-h-dvh lg:grid-cols-2">
+    <div class="grid grid-cols-1 min-h-dvh lg:grid-cols-2">
         {{-- Panel perkenalan (layar lebar) --}}
         <aside class="relative isolate hidden overflow-hidden bg-linear-to-br from-brand to-brand-2 p-12 text-on-brand lg:flex lg:flex-col lg:justify-between">
             <div class="absolute -top-24 -right-24 -z-10 size-96 rounded-full bg-white/10"></div>

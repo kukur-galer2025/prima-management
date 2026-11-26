@@ -493,7 +493,7 @@ new #[Title('Akun')] class extends Component
     <section class="card">
         <h2 class="section-title mb-1">Data & backup</h2>
         <p class="mb-4 text-sm text-muted">Unduh salinan seluruh datamu kapan saja. Server juga membuat backup database otomatis setiap hari pukul 02.00 (14 terakhir disimpan).</p>
-        <div class="grid gap-2 sm:grid-cols-2">
+        <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <button type="button" class="btn btn-ghost" wire:click="exportJson"><x-icon name="download" class="size-4" /> Semua data (JSON)</button>
             <button type="button" class="btn btn-ghost" wire:click="exportSessionsCsv"><x-icon name="download" class="size-4" /> Sesi fokus (CSV)</button>
         </div>
@@ -507,7 +507,7 @@ new #[Title('Akun')] class extends Component
                 <div wire:loading wire:target="importFile" class="text-xs text-muted">Mengunggah…</div>
                 @error('importFile') <p class="error">{{ $message }}</p> @enderror
 
-                <div class="grid gap-2 sm:grid-cols-2">
+                <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <label @class(['flex cursor-pointer items-start gap-2 rounded-2xl border p-3 text-sm', 'border-brand bg-brand-soft/40' => $importMode === 'merge', 'border-line' => $importMode !== 'merge'])>
                         <input type="radio" wire:model.live="importMode" value="merge" class="mt-0.5 accent-brand">
                         <span><span class="block font-bold">Tambahkan</span><span class="text-xs text-muted">Data lama tetap ada, isi file ditambahkan.</span></span>

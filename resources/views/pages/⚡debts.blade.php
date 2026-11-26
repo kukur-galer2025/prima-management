@@ -297,7 +297,7 @@ new #[Title('Utang & piutang')] class extends Component
                 </div>
             @endunless
 
-            <div class="mt-3 flex gap-2">
+            <div class="mt-3 flex flex-wrap gap-2">
                 @unless ($debt->isSettled())
                     <button class="btn btn-primary flex-1 py-2 text-sm" wire:click="openPayment({{ $debt->id }})">{{ $isPayable ? 'Bayar' : 'Terima pembayaran' }}</button>
                 @endunless

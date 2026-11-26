@@ -217,16 +217,16 @@ new #[Title('Kalender')] class extends Component
 
     {{-- Detail tanggal terpilih --}}
     <section class="space-y-3">
-        <div class="flex items-end justify-between gap-2">
-            <div>
+        <div class="flex flex-wrap items-end justify-between gap-x-3 gap-y-1">
+            <div class="min-w-0">
                 @php $offset = (int) today()->diffInDays($selectedDate, false); @endphp
                 <p class="text-xs font-bold tracking-wider text-brand uppercase">
                     {{ match (true) { $offset === 0 => 'Hari ini', $offset === 1 => 'Besok', $offset === -1 => 'Kemarin', $offset > 1 => $offset.' hari lagi', default => abs($offset).' hari lalu' } }}
                 </p>
-                <h2 class="text-xl font-extrabold tracking-tight">{{ $selectedDate->translatedFormat('l, d F Y') }}</h2>
+                <h2 class="text-lg font-extrabold tracking-tight sm:text-xl">{{ $selectedDate->translatedFormat('l, d F Y') }}</h2>
             </div>
             @if ($selectedDate->lte(today()))
-                <a href="{{ route('study') }}" wire:navigate class="link">+ Catat fokus</a>
+                <a href="{{ route('study') }}" wire:navigate class="link shrink-0 whitespace-nowrap">+ Catat fokus</a>
             @endif
         </div>
 
@@ -237,7 +237,7 @@ new #[Title('Kalender')] class extends Component
             </a>
         @endforeach
 
-        <div class="grid gap-3 sm:grid-cols-2">
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div class="card">
                 <h3 class="mb-2 flex items-center gap-2 text-sm font-bold"><x-icon name="check" class="size-4 text-brand" /> Tugas</h3>
                 @forelse ($detail['tasks'] as $task)

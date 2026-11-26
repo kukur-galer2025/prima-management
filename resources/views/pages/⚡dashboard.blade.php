@@ -396,7 +396,7 @@ new #[Title('Beranda')] class extends Component
                 <button class="rounded-xl p-1.5 text-muted hover:bg-surface-2" wire:click="dismissOnboarding" aria-label="Sembunyikan panduan"><x-icon name="x" class="size-4" /></button>
             </div>
             <x-progress :value="round($onboardingDone / count($onboarding) * 100)" class="mb-3" />
-            <div class="grid gap-2 sm:grid-cols-2">
+            <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 @foreach ($onboarding as $index => $step)
                     <a href="{{ route($step['route']) }}" wire:navigate wire:key="onboarding-{{ $index }}" @class([
                         'flex items-center gap-3 rounded-2xl border p-3 transition',
@@ -564,7 +564,7 @@ new #[Title('Beranda')] class extends Component
     @if ($this->upcomingDeadlines->isNotEmpty())
         <section>
             <h2 class="section-title mb-2">Hitung mundur</h2>
-            <div class="grid gap-2 sm:grid-cols-2">
+            <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 @foreach ($this->upcomingDeadlines as $goal)
                     <a href="{{ route('goals.show', $goal) }}" wire:navigate wire:key="dl-{{ $goal->id }}" @class(['card card-hover flex items-center gap-3 py-3', 'border-danger/40' => $goal->isOverdue()])>
                         @if ($goal->isOverdue())
@@ -591,7 +591,7 @@ new #[Title('Beranda')] class extends Component
                 <h2 class="section-title">Uang</h2>
                 <a href="{{ route('finance') }}" wire:navigate class="link">Keuangan</a>
             </div>
-            <div class="grid gap-2 sm:grid-cols-2">
+            <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <a href="{{ route('finance') }}" wire:navigate class="card card-hover block py-3">
                     @if ($money['wallets'])
                         <p class="text-xs font-semibold text-muted">Saldo {{ $money['wallets'] }} dompet</p>
@@ -642,7 +642,7 @@ new #[Title('Beranda')] class extends Component
             <h2 class="section-title">Progres target</h2>
             <a href="{{ route('goals.index') }}" wire:navigate class="link">Semua</a>
         </div>
-        <div class="grid gap-2 sm:grid-cols-2">
+        <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
             @forelse ($this->goals as $goal)
                 @php $pace = $goal->pace(); @endphp
                 <a href="{{ route('goals.show', $goal) }}" wire:navigate wire:key="goal-{{ $goal->id }}" class="card card-hover block py-3">

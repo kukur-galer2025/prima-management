@@ -208,7 +208,7 @@ new #[Title('Target')] class extends Component
         <p class="text-sm text-muted">Target yang dihapus disimpan di sini. Log fokus, tugas, dan catatannya tetap aman sampai kamu menghapusnya permanen.</p>
     @endif
 
-    <div class="grid gap-3 sm:grid-cols-2">
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
         @forelse ($this->goals as $goal)
             @if ($goal->trashed())
                 <div wire:key="trashed-{{ $goal->id }}" class="card relative overflow-hidden">

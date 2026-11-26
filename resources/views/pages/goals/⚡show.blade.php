@@ -357,7 +357,7 @@ new class extends Component
             @endforeach
             <form wire:submit="addTask" class="flex gap-2 p-2">
                 <input wire:model="newTask" class="input min-w-0 py-2" placeholder="Tambah tugas…" aria-label="Tugas baru">
-                <input type="date" wire:model="newTaskDue" class="input w-36 shrink-0 py-2" aria-label="Tenggat">
+                <input type="date" wire:model="newTaskDue" class="input w-36 max-w-[45%] shrink-0 py-2" aria-label="Tenggat">
                 <button class="btn btn-ghost px-3" aria-label="Tambah tugas"><x-icon name="plus" class="size-4" /></button>
             </form>
         </div>

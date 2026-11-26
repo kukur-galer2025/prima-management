@@ -247,7 +247,7 @@ new #[Title('Tabungan')] class extends Component
                 @endif
             </div>
 
-            <div class="mt-3 flex gap-2">
+            <div class="mt-3 flex flex-wrap gap-2">
                 <button class="btn btn-primary flex-1 py-2 text-sm" wire:click="openDeposit({{ $goal->id }})"><x-icon name="plus" class="size-4" /> Setor</button>
                 <button class="btn btn-ghost py-2 text-sm" wire:click="openDeposit({{ $goal->id }}, 'withdraw')" @disabled($goal->savedAmount() <= 0)>Tarik</button>
                 @if ($goal->deposits->isNotEmpty())

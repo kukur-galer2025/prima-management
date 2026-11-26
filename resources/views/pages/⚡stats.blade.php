@@ -375,7 +375,7 @@ new #[Title('Statistik')] class extends Component
                         title="{{ \Carbon\CarbonImmutable::parse($day['date'])->translatedFormat('D, d M') }}{{ $day['mood'] ? ': '.JournalEntry::MOODS[$day['mood']]['label'] : ': tidak ada entri' }}"></div>
                 @endforeach
             </div>
-            <div class="mt-3 grid gap-2 sm:grid-cols-2">
+            <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <div class="rounded-2xl bg-surface-2 p-3">
                     <p class="text-xs font-semibold text-muted">Rata-rata mood</p>
                     <p class="mt-0.5 text-lg font-extrabold">{{ JournalEntry::emojiFor($mood['average']) }} {{ number_format($mood['average'], 1, ',', '.') }}</p>
