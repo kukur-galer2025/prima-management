@@ -108,6 +108,34 @@ class RemindersTest extends TestCase
         $this->actingAs($user)->get(route('goals.index'))->assertSee('Lewat pukul 17:03');
     }
 
+    public function test_task_is_reminded_again_right_at_its_due_time_even_when_created_last_minute(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-26 17:08'));
+        $user = User::factory()->create();
+        $justDue = Task::factory()->for($user)->create(['title' => 'Nana', 'due_date' => '2026-11-26', 'due_time' => '17:07']);
+        Task::factory()->for($user)->create(['due_date' => '2026-11-26', 'due_time' => '16:30']);
+        Task::factory()->for($user)->create(['due_date' => '2026-11-26', 'due_time' => '17:05', 'is_done' => true]);
+        $goal = Goal::factory()->for($user)->create(['deadline' => '2026-11-26', 'deadline_time' => '17:00']);
+
+        $keys = collect(app(Reminders::class)->dueFor($user, now()))->pluck('key')->all();
+
+        $this->assertContains("task-due:{$justDue->id}:2026-11-26", $keys);
+        $this->assertContains("goal-due:{$goal->id}:2026-11-26", $keys);
+        $this->assertCount(2, $keys, 'tugas yang lewat >15 menit atau sudah selesai tidak diingatkan');
+        $this->assertTrue($justDue->isOverdue(), 'tugas yang jamnya sudah lewat ditandai terlambat');
+    }
+
+    public function test_reminder_status_command_reports_delivery_setup(): void
+    {
+        $user = User::factory()->create(['email' => 'cek@example.test', 'telegram_chat_id' => '555']);
+        $user->reminders()->create(['key' => 'x', 'title' => 'Uji pengingat', 'body' => '-', 'url' => '/']);
+
+        $this->artisan('app:reminder-status')
+            ->expectsOutputToContain('BELUM PERNAH')
+            ->expectsOutputToContain('Uji pengingat')
+            ->assertSuccessful();
+    }
+
     public function test_goal_deadline_reminder_is_sent_to_telegram(): void
     {
         config(['services.telegram.bot_token' => '123:abc', 'services.telegram.bot_username' => 'PrimaBot']);

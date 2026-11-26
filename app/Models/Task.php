@@ -95,7 +95,12 @@ class Task extends Model
 
     public function isOverdue(): bool
     {
-        return ! $this->is_done && $this->due_date && $this->due_date->lt(today());
+        if ($this->is_done || ! $this->due_date) {
+            return false;
+        }
+
+        return $this->due_date->lt(today())
+            || ($this->due_date->isToday() && $this->due_time !== null && now()->format('H:i') > $this->due_time);
     }
 
     /** "Rab, 25 Nov" atau "Rab, 25 Nov · 10:00" */

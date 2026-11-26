@@ -21,6 +21,9 @@ class Reminders
     /** Deadline target berjam diingatkan sejak 1 jam sebelumnya (atau segera bila dibuat lebih mepet). */
     public const GOAL_LEAD_MINUTES = 60;
 
+    /** Pengingat "sekarang" tugas/target masih dikirim sampai 15 menit setelah jamnya bila sempat terlewat. */
+    public const DUE_NOW_WINDOW_MINUTES = 15;
+
     /** Ringkasan harian hanya dikirim dalam rentang jam ini supaya tidak muncul tengah malam. */
     public const DIGEST_FROM = '07:00';
 
@@ -151,6 +154,42 @@ class Reminders
                 'title' => "⏰ {$task->title}",
                 'body' => "Tenggat pukul {$task->due_time}".($task->goal ? " · {$task->goal->name}" : ''),
                 'url' => route('tasks', absolute: false),
+            ];
+        }
+
+        // Tepat di jamnya (dengan jendela susulan bila scheduler sempat tertunda atau tugas dibuat mepet).
+        $catchUpStart = $now->copy()->subMinutes(self::DUE_NOW_WINDOW_MINUTES)->format('H:i');
+        $tasksDueNow = $user->tasks()
+            ->with('goal')
+            ->where('is_done', false)
+            ->whereDate('due_date', $now)
+            ->where('due_time', '<=', $currentTime)
+            ->when($catchUpStart < $currentTime, fn ($query) => $query->where('due_time', '>', $catchUpStart))
+            ->get();
+
+        foreach ($tasksDueNow as $task) {
+            $reminders[] = [
+                'key' => "task-due:{$task->id}:{$date}",
+                'title' => "⏰ Sekarang: {$task->title}",
+                'body' => "Sudah pukul {$task->due_time}. Centang setelah selesai.".($task->goal ? " · {$task->goal->name}" : ''),
+                'url' => route('tasks', absolute: false),
+            ];
+        }
+
+        $goalsDueNow = $user->goals()
+            ->where('status', 'active')
+            ->whereDate('deadline', $now)
+            ->whereNotNull('deadline_time')
+            ->where('deadline_time', '<=', $currentTime)
+            ->when($catchUpStart < $currentTime, fn ($query) => $query->where('deadline_time', '>', $catchUpStart))
+            ->get();
+
+        foreach ($goalsDueNow as $goal) {
+            $reminders[] = [
+                'key' => "goal-due:{$goal->id}:{$date}",
+                'title' => "🎯 Sekarang: {$goal->label()}",
+                'body' => "Deadline pukul {$goal->deadline_time} sudah tiba.",
+                'url' => route('goals.show', $goal, false),
             ];
         }
 

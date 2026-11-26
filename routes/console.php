@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\RecurringTransaction;
+use App\Models\Reminder;
 use App\Models\User;
 use App\Services\DatabaseBackup;
 use App\Services\Preflight;
@@ -9,9 +10,11 @@ use App\Services\Telegram;
 use App\Services\WebPush;
 use Database\Seeders\StarterGoalsSeeder;
 use Illuminate\Foundation\Inspiring;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\Facades\Storage;
 
@@ -61,6 +64,33 @@ Artisan::command('app:send-reminders', function (Reminders $reminders) {
 
     $this->info("{$count} pengingat baru dikirim.");
 })->purpose('Kirim notifikasi push untuk jadwal yang akan dimulai dan ringkasan harian');
+
+Artisan::command('app:reminder-status', function (Telegram $telegram) {
+    $this->line('Waktu server aplikasi : '.now()->format('d M Y H:i').' ('.config('app.timezone').')');
+
+    $heartbeat = Cache::get('scheduler.heartbeat');
+    $this->line('Cron terakhir jalan   : '.($heartbeat ? (int) now()->diffInMinutes(Carbon::createFromTimestamp($heartbeat), true).' menit lalu' : 'BELUM PERNAH (cron tidak berjalan)'));
+
+    if ($telegram->isConfigured()) {
+        $info = Http::timeout(10)->get('https://api.telegram.org/bot'.config('services.telegram.bot_token').'/getWebhookInfo')->json('result') ?? [];
+        $this->line('Bot Telegram          : @'.$telegram->botUsername().' · webhook '.(($info['url'] ?? '') !== '' ? 'terdaftar' : 'BELUM terdaftar')
+            .(isset($info['last_error_message']) ? ' · error terakhir: '.$info['last_error_message'] : ' · tanpa error'));
+    } else {
+        $this->line('Bot Telegram          : belum diatur');
+    }
+
+    $this->newLine();
+    $this->table(['Akun', 'Telegram', 'Perangkat push', 'Pengingat 24 jam'], User::query()->whereNull('disabled_at')->withCount('pushSubscriptions')->get()->map(fn (User $user) => [
+        $user->email,
+        $user->hasTelegram() ? 'tersambung' : '-',
+        $user->push_subscriptions_count,
+        $user->reminders()->where('created_at', '>=', now()->subDay())->count(),
+    ]));
+
+    $this->line('Pengingat terakhir:');
+    Reminder::query()->with('user')->latest()->take(8)->get()
+        ->each(fn ($reminder) => $this->line('  '.$reminder->created_at->format('d M H:i').' · '.$reminder->user?->email.' · '.$reminder->title));
+})->purpose('Periksa kenapa pengingat (Telegram/push) tidak masuk');
 
 Artisan::command('app:vapid-keys', function () {
     $keys = WebPush::generateKeys();
