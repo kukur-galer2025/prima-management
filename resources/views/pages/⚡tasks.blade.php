@@ -76,7 +76,7 @@ new #[Title('Tugas')] class extends Component
 
         return collect([
             'Terlambat' => $tasks->filter(fn (Task $task) => $task->isOverdue()),
-            'Hari ini' => $tasks->filter(fn (Task $task) => ! $task->is_done && $task->due_date?->isToday()),
+            'Hari ini' => $tasks->filter(fn (Task $task) => ! $task->is_done && $task->due_date?->isToday() && ! $task->isOverdue()),
             '7 hari ke depan' => $tasks->filter(fn (Task $task) => ! $task->is_done && $task->due_date?->gt(today()) && $task->due_date->lte($weekAhead)),
             'Nanti' => $tasks->filter(fn (Task $task) => ! $task->is_done && $task->due_date?->gt($weekAhead)),
             'Tanpa tanggal' => $tasks->filter(fn (Task $task) => ! $task->is_done && ! $task->due_date)->sortBy('priority'),
@@ -327,7 +327,10 @@ new #[Title('Tugas')] class extends Component
     </x-page-header>
 
     <form wire:submit="quickAdd" class="card space-y-2 p-3">
-        <input wire:model.live.debounce.400ms="title" class="input" placeholder="Coba: Daftar ulang besok jam 10 !penting" aria-label="Judul tugas" autocomplete="off" @if ($showForm) disabled @endif>
+        <div class="flex gap-2">
+            <input wire:model.live.debounce.400ms="title" class="input min-w-0 flex-1" placeholder="Coba: Daftar ulang besok jam 10 !penting" aria-label="Judul tugas" autocomplete="off" @if ($showForm) disabled @endif>
+            <button class="btn btn-primary shrink-0 px-3.5" aria-label="Tambah tugas"><x-icon name="plus" class="size-5" /><span class="hidden sm:inline">Tambah</span></button>
+        </div>
         @if (! $showForm) @error('title') <p class="error">{{ $message }}</p> @enderror @endif
         @if ($preview = $this->quickPreview)
             <div class="flex flex-wrap items-center gap-1.5 px-1 text-xs" aria-live="polite">
@@ -347,31 +350,33 @@ new #[Title('Tugas')] class extends Component
                 @endif
             </div>
         @endif
-        <div class="grid grid-cols-2 gap-2 sm:flex">
-            <select wire:model="goal_id" class="input col-span-2 min-w-0 py-2 text-sm sm:flex-1" aria-label="Target" @if ($showForm) disabled @endif>
+        {{-- Di HP: tanggal & jam selalu tampil; target, prioritas, pengulangan dilipat supaya daftar tugas tidak terdorong jauh ke bawah. --}}
+        <div class="grid grid-cols-2 gap-2 sm:grid-cols-[10rem_8rem_minmax(0,1fr)]">
+            <x-date-input wire:model="due_date" class="py-2 text-sm" placeholder="Tanggal tenggat" aria-label="Tenggat" :disabled="$showForm" />
+            <x-date-input type="time" wire:model="due_time" class="py-2 text-sm" placeholder="Jam tenggat" aria-label="Jam tenggat (opsional)" :disabled="$showForm" />
+            <input type="checkbox" id="task-more" class="peer sr-only" @checked(filled($goal_id) || (int) $priority !== 2 || filled($recurrence))>
+            <label for="task-more" class="col-span-2 flex cursor-pointer items-center justify-center gap-1 rounded-xl py-1 text-xs font-semibold text-muted hover:text-ink sm:hidden peer-checked:[&_svg]:rotate-90">
+                Target, prioritas & pengulangan <x-icon name="chevron-right" class="size-3.5 transition" />
+            </label>
+            <select wire:model="goal_id" class="input col-span-2 min-w-0 py-2 text-sm max-sm:hidden max-sm:peer-checked:block sm:col-span-1" aria-label="Target" @if ($showForm) disabled @endif>
                 <option value="">Tanpa target</option>
                 @foreach ($this->goals as $goal)
                     <option value="{{ $goal->id }}">{{ $goal->label() }}</option>
                 @endforeach
             </select>
-            <x-date-input wire:model="due_date" wrapper-class="sm:w-36 sm:shrink-0" class="py-2 text-sm" placeholder="Tanggal tenggat" aria-label="Tenggat" :disabled="$showForm" />
-            <x-date-input type="time" wire:model="due_time" wrapper-class="sm:w-28 sm:shrink-0" class="py-2 text-sm" placeholder="Jam tenggat" aria-label="Jam tenggat (opsional)" :disabled="$showForm" />
-        </div>
-        @if (! $showForm) @error('due_date') <p class="error">{{ $message }}</p> @enderror @endif
-        <div class="grid grid-cols-2 gap-2 sm:flex">
-            <select wire:model="priority" class="input min-w-0 py-2 text-sm sm:flex-1" aria-label="Prioritas" @if ($showForm) disabled @endif>
+            <select wire:model="priority" class="input col-span-2 min-w-0 py-2 text-sm max-sm:hidden max-sm:peer-checked:block" aria-label="Prioritas" @if ($showForm) disabled @endif>
                 @foreach (Task::PRIORITIES as $value => $label)
                     <option value="{{ $value }}">Prioritas {{ strtolower($label) }}</option>
                 @endforeach
             </select>
-            <select wire:model="recurrence" class="input min-w-0 py-2 text-sm sm:flex-1" aria-label="Pengulangan" @if ($showForm) disabled @endif>
+            <select wire:model="recurrence" class="input col-span-2 min-w-0 py-2 text-sm max-sm:hidden max-sm:peer-checked:block sm:col-span-1" aria-label="Pengulangan" @if ($showForm) disabled @endif>
                 <option value="">Tidak berulang</option>
                 @foreach (Task::RECURRENCES as $value => $label)
                     <option value="{{ $value }}">{{ $label }}</option>
                 @endforeach
             </select>
-            <button class="btn btn-primary col-span-2 shrink-0 sm:px-3" aria-label="Tambah tugas"><x-icon name="plus" class="size-5" /><span class="sm:hidden">Tambah tugas</span></button>
         </div>
+        @if (! $showForm) @error('due_date') <p class="error">{{ $message }}</p> @enderror @endif
     </form>
 
     <div class="space-y-3">

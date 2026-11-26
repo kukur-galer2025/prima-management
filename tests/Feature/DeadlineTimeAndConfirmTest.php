@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Goal;
+use App\Models\Task;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -58,6 +59,19 @@ class DeadlineTimeAndConfirmTest extends TestCase
             ->assertOk()
             ->assertSee('Jam tenggat', false)
             ->assertSee('date-placeholder', false);
+    }
+
+    public function test_task_past_its_time_today_is_listed_only_once_under_overdue(): void
+    {
+        $this->travelTo(now()->setTime(17, 34));
+        $user = User::factory()->create();
+        $late = Task::factory()->for($user)->create(['title' => 'Mandi', 'due_date' => today(), 'due_time' => '17:30']);
+        $later = Task::factory()->for($user)->create(['title' => 'Makan malam', 'due_date' => today(), 'due_time' => '19:00']);
+
+        $groups = Livewire::actingAs($user)->test('pages::tasks')->instance()->groups;
+
+        $this->assertSame([$late->id], $groups['Terlambat']->pluck('id')->all());
+        $this->assertSame([$later->id], $groups['Hari ini']->pluck('id')->all());
     }
 
     public function test_app_uses_styled_confirm_dialog_instead_of_browser_default(): void

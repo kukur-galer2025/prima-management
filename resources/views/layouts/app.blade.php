@@ -116,7 +116,7 @@
             </div>
         </aside>
 
-        <main class="min-w-0 flex-1 pb-32 md:pb-12 print:pb-0">
+        <main class="min-w-0 flex-1 pb-[calc(8.5rem+env(safe-area-inset-bottom))] md:pb-12 print:pb-0">
             {{-- Top bar (HP) --}}
             <div class="print:hidden sticky top-0 z-30 border-b border-line/50 bg-bg/80 pt-[env(safe-area-inset-top)] backdrop-blur-xl md:hidden">
                 <div class="mx-auto flex max-w-3xl items-center justify-between px-4 py-2">
