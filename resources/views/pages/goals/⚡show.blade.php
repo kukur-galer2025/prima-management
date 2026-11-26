@@ -210,7 +210,7 @@ new class extends Component
                         <span class="chip bg-white/15">{{ Goal::STATUSES[$goal->status] }}</span>
                     @endif
                     @if ($goal->isOverdue())
-                        <span class="chip bg-white text-danger">Deadline lewat {{ abs($daysLeft) }} hari</span>
+                        <span class="chip bg-white text-danger">{{ $daysLeft === 0 ? 'Deadline lewat pukul '.$goal->deadline_time : 'Deadline lewat '.abs($daysLeft).' hari' }}</span>
                     @endif
                 </div>
             </div>

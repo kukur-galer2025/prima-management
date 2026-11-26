@@ -18,6 +18,9 @@ class Reminders
     /** Berapa menit sebelum slot jadwal dimulai pengingat dikirim. */
     public const SLOT_LEAD_MINUTES = 10;
 
+    /** Deadline target berjam diingatkan sejak 1 jam sebelumnya (atau segera bila dibuat lebih mepet). */
+    public const GOAL_LEAD_MINUTES = 60;
+
     /** Ringkasan harian hanya dikirim dalam rentang jam ini supaya tidak muncul tengah malam. */
     public const DIGEST_FROM = '07:00';
 
@@ -148,6 +151,25 @@ class Reminders
                 'title' => "⏰ {$task->title}",
                 'body' => "Tenggat pukul {$task->due_time}".($task->goal ? " · {$task->goal->name}" : ''),
                 'url' => route('tasks', absolute: false),
+            ];
+        }
+
+        $goalLeadTime = $now->copy()->addMinutes(self::GOAL_LEAD_MINUTES)->format('H:i');
+        $goalsDueSoon = $user->goals()
+            ->where('status', 'active')
+            ->whereDate('deadline', $now)
+            ->whereNotNull('deadline_time')
+            ->where('deadline_time', '>', $currentTime)
+            ->when($goalLeadTime > $currentTime, fn ($query) => $query->where('deadline_time', '<=', $goalLeadTime))
+            ->get();
+
+        foreach ($goalsDueSoon as $goal) {
+            $minutesLeft = (int) ceil($now->diffInMinutes($now->copy()->setTimeFromTimeString($goal->deadline_time), false));
+            $reminders[] = [
+                'key' => "goal:{$goal->id}:{$date}",
+                'title' => "🎯 {$goal->label()}",
+                'body' => "Deadline hari ini pukul {$goal->deadline_time} ({$minutesLeft} menit lagi).",
+                'url' => route('goals.show', $goal, false),
             ];
         }
 

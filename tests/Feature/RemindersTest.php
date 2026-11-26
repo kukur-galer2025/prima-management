@@ -86,6 +86,45 @@ class RemindersTest extends TestCase
         $this->assertEmpty(app(Reminders::class)->dueFor($user, Carbon::parse('2026-11-25 13:00')));
     }
 
+    public function test_goal_deadline_with_time_is_reminded_within_the_hour_before(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-25 16:30'));
+        $user = User::factory()->create();
+        $soon = Goal::factory()->for($user)->create(['name' => 'TOEFL', 'icon' => null, 'deadline' => '2026-11-25', 'deadline_time' => '17:03']);
+        Goal::factory()->for($user)->create(['deadline' => '2026-11-25', 'deadline_time' => '18:00']);
+        Goal::factory()->for($user)->create(['deadline' => '2026-11-25', 'deadline_time' => '16:00']);
+        Goal::factory()->for($user)->create(['deadline' => '2026-11-25', 'deadline_time' => '17:00', 'status' => 'paused']);
+        Goal::factory()->for($user)->create(['deadline' => '2026-11-25', 'deadline_time' => null]);
+
+        $goalReminders = collect(app(Reminders::class)->dueFor($user, now()))->filter(fn ($reminder) => str_starts_with($reminder['key'], 'goal:'));
+
+        $this->assertSame(["goal:{$soon->id}:2026-11-25"], $goalReminders->pluck('key')->all());
+        $this->assertSame('Deadline hari ini pukul 17:03 (33 menit lagi).', $goalReminders->first()['body']);
+        $this->assertStringContainsString('TOEFL', $goalReminders->first()['title']);
+
+        $this->assertFalse($soon->isOverdue());
+        $this->travelTo(Carbon::parse('2026-11-25 17:04'));
+        $this->assertTrue($soon->fresh()->isOverdue());
+        $this->actingAs($user)->get(route('goals.index'))->assertSee('Lewat pukul 17:03');
+    }
+
+    public function test_goal_deadline_reminder_is_sent_to_telegram(): void
+    {
+        config(['services.telegram.bot_token' => '123:abc', 'services.telegram.bot_username' => 'PrimaBot']);
+        Http::fake(['api.telegram.org/*' => Http::response(['ok' => true])]);
+        $this->travelTo(Carbon::parse('2026-11-25 16:58'));
+        $user = User::factory()->create(['telegram_chat_id' => '555']);
+        Goal::factory()->for($user)->create(['name' => 'Angkat jemuran', 'deadline' => '2026-11-25', 'deadline_time' => '17:00']);
+
+        $this->assertSame(1, app(Reminders::class)->dispatch(now()));
+        $this->assertSame(0, app(Reminders::class)->dispatch(now()), 'tidak dikirim dua kali');
+
+        Http::assertSent(fn (Request $request) => str_contains($request->url(), '/sendMessage')
+            && $request['chat_id'] === '555'
+            && str_contains($request['text'], 'Angkat jemuran')
+            && str_contains($request['text'], '2 menit lagi'));
+    }
+
     public function test_expired_subscription_is_removed(): void
     {
         Http::fake(['*' => Http::response('', 410)]);

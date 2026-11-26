@@ -119,7 +119,12 @@ class Goal extends Model
 
     public function isOverdue(): bool
     {
-        return $this->status !== 'done' && $this->deadline !== null && $this->deadline->lt(today());
+        if ($this->status === 'done' || $this->deadline === null) {
+            return false;
+        }
+
+        return $this->deadline->lt(today())
+            || ($this->deadline->isToday() && $this->deadline_time !== null && now()->format('H:i') > $this->deadline_time);
     }
 
     /** Muat agregat yang dipakai progress() & hoursLogged() dalam satu query. */

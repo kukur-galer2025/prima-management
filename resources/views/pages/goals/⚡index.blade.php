@@ -253,7 +253,7 @@ new #[Title('Target')] class extends Component
                             <span class="chip bg-surface-2 text-muted">{{ Goal::STATUSES[$goal->status] }}</span>
                         @endif
                         @if ($goal->isOverdue())
-                            <span class="chip bg-danger/10 text-danger"><x-icon name="flag" class="size-3" /> Lewat {{ abs($goal->daysLeft()) }} hari</span>
+                            <span class="chip bg-danger/10 text-danger"><x-icon name="flag" class="size-3" /> {{ $goal->daysLeft() === 0 ? 'Lewat pukul '.$goal->deadline_time : 'Lewat '.abs($goal->daysLeft()).' hari' }}</span>
                         @elseif (! is_null($goal->daysLeft()) && $goal->daysLeft() >= 0)
                             <span class="chip bg-brand-soft text-brand-ink" title="Deadline {{ $goal->deadlineLabel() }}"><x-icon name="flag" class="size-3" /> {{ $goal->daysLeft() === 0 ? 'Hari ini' : $goal->daysLeft().' hari lagi' }}{{ $goal->deadline_time ? ' · '.$goal->deadline_time : '' }}</span>
                         @endif
