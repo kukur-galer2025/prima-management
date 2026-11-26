@@ -119,44 +119,75 @@ Di **Akun → Sinkron ke Google Calendar**, buat tautan iCal rahasia lalu tambah
 
 ## Deploy
 
-`deploy.sh` (Linux dengan SSH) menyiapkan rilis baru di folder terpisah, mengujinya, baru mengaktifkannya dengan satu kali ganti symlink. Langkah yang gagal tidak menyentuh situs yang sedang berjalan, dan rilis yang ternyata tidak sehat otomatis dikembalikan.
+`deploy.sh` (Linux dengan SSH) menyiapkan rilis baru di folder terpisah, mengujinya, baru mengaktifkannya dengan satu kali ganti symlink. Langkah yang gagal tidak menyentuh situs yang sedang berjalan, dan rilis yang ternyata rusak setelah aktif otomatis dikembalikan. Sebelum migrasi, database selalu dicadangkan.
 
-Kebutuhan server: PHP 8.4.1+ (`ctype curl dom fileinfo mbstring openssl pdo_sqlite tokenizer xml zlib`), Composer, Node.js 22+, git, curl. Document root web server: `DEPLOY_PATH/current/public`. Di Nginx pakai `fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;` supaya pergantian rilis langsung terbaca.
+Kebutuhan server: PHP 8.4.1+ (`ctype curl dom fileinfo mbstring openssl pdo_mysql` atau `pdo_sqlite`, `tokenizer xml zlib`), Composer, Node.js 22+, git, curl, dan `mysqldump` bila memakai MySQL/MariaDB.
 
-1. Buat `DEPLOY_PATH/shared/.env` dari `.env.example`, lalu ubah minimal:
+### Contoh: CloudPanel + MySQL
+
+Ganti `USER` dengan Site User dan `DOMAIN` dengan domainmu.
+
+1. **CloudPanel → Sites → Add Site → PHP Site**: Application *Laravel*, PHP *8.4*, domain lengkap (mis. `primamanagement.amania.id`), sandi user hasil *Generate*.
+2. **Site → Databases → Add Database.** Pakai sandi yang hanya berisi huruf & angka (tanda kutip, `#`, spasi, atau `\` mudah salah tulis di `.env`).
+3. Sebagai `USER` lewat SSH, siapkan `.env` bersama:
+   ```bash
+   export DEPLOY_PATH=/home/USER/htdocs/DOMAIN PHP_BIN=/usr/bin/php8.4
+   curl -fsSLO https://raw.githubusercontent.com/kukur-galer2025/prima-management/main/deploy.sh
+   mkdir -p $DEPLOY_PATH/shared
+   curl -fsSL https://raw.githubusercontent.com/kukur-galer2025/prima-management/main/.env.example -o $DEPLOY_PATH/shared/.env
+   chmod 600 $DEPLOY_PATH/shared/.env && nano $DEPLOY_PATH/shared/.env
+   ```
+   Ubah minimal:
    ```
    APP_ENV=production
    APP_DEBUG=false
-   APP_KEY=                      # hasil: php artisan key:generate --show (jangan diganti lagi setelah dipakai)
-   APP_URL=https://domainmu
+   APP_KEY=base64:...            # buat sekali: echo "base64:$(openssl rand -base64 32)"; jangan diganti setelah dipakai
+   APP_URL=https://DOMAIN
    LOG_STACK=daily
    LOG_LEVEL=warning
    SESSION_SECURE_COOKIE=true
-   DB_DATABASE=/var/www/prima/shared/database.sqlite   # wajib di luar folder rilis
-   BACKUP_PATH=/var/www/prima/shared/backups
+   TRUSTED_PROXIES=127.0.0.1     # CloudPanel meneruskan permintaan lewat proxy lokal
+   VIEW_CHECK_CACHE_TIMESTAMPS=false
+   DB_CONNECTION=mysql
+   DB_HOST=127.0.0.1
+   DB_PORT=3306
+   DB_DATABASE=nama_database
+   DB_USERNAME=user_database
+   DB_PASSWORD=sandi_database
+   BACKUP_PATH=/home/USER/htdocs/DOMAIN/shared/backups
    ```
-2. Deploy pertama (belum ada admin, jadi pemeriksaan admin dilewati sekali), lalu buat admin:
+4. Deploy pertama. Admin belum ada, jadi pemeriksaan admin dilewati **sekali**. Lalu buat admin dan kunci VAPID:
    ```bash
-   DEPLOY_PATH=/var/www/prima ALLOW_PREFLIGHT_ERRORS=1 ./deploy.sh
-   cd /var/www/prima/current && php artisan app:create-user --admin
+   ALLOW_PREFLIGHT_ERRORS=1 bash deploy.sh
+   cd $DEPLOY_PATH/current
+   $PHP_BIN artisan app:create-user --admin
+   $PHP_BIN artisan app:vapid-keys          # salin hasilnya ke shared/.env
+   $PHP_BIN artisan config:cache && $PHP_BIN artisan app:preflight
    ```
-3. Pasang cron: `* * * * * cd /var/www/prima/current && php artisan schedule:run >> /dev/null 2>&1`
-4. Deploy berikutnya dan kembali ke rilis sebelumnya:
+5. Di CloudPanel:
+   - **Settings → Root Directory**: `DOMAIN/current/public`
+   - **Vhost**: ubah `$document_root$fastcgi_script_name` menjadi `$realpath_root$fastcgi_script_name` supaya rilis baru langsung terbaca
+   - **Cron Jobs** (setiap menit): `cd /home/USER/htdocs/DOMAIN/current && /usr/bin/php8.4 artisan schedule:run >> /dev/null 2>&1`
+   - **SSL/TLS**: buat sertifikat Let's Encrypt
+6. Update berikutnya:
    ```bash
-   DEPLOY_PATH=/var/www/prima APP_PUBLIC_URL=https://domainmu RELOAD_COMMAND="sudo systemctl reload php8.4-fpm" ./deploy.sh
-   DEPLOY_PATH=/var/www/prima ./deploy.sh rollback
+   DEPLOY_PATH=/home/USER/htdocs/DOMAIN PHP_BIN=/usr/bin/php8.4 APP_PUBLIC_URL=https://DOMAIN bash ~/deploy.sh
+   DEPLOY_PATH=/home/USER/htdocs/DOMAIN PHP_BIN=/usr/bin/php8.4 bash ~/deploy.sh rollback    # kembali ke rilis sebelumnya
    ```
 
+### Catatan
+
 - `php artisan app:preflight` memeriksa kesiapan produksi kapan saja. `/up` mengecek database & storage; pasang di pemantau uptime.
-- Bila PHP bawaan server bukan 8.4, tambahkan `PHP_BIN=/usr/bin/php8.4`.
-- Di belakang proxy/Cloudflare, isi `TRUSTED_PROXIES`.
-- Rollback mengembalikan kode, bukan struktur database. Karena itu migrasi sebaiknya hanya **menambah** tabel/kolom; hapus kolom lama di rilis berikutnya.
-- SQLite memakai mode WAL: jangan menyalin `database.sqlite` saat aplikasi berjalan, pakai `php artisan app:backup-database`.
+- `RELOAD_COMMAND="sudo systemctl reload php8.4-fpm"` (bila user boleh sudo) membuat rilis baru tersaji seketika. Tanpa itu, skrip menunggu sampai PHP memakai rilis baru (bisa sampai ±2 menit).
+- Rollback mengembalikan kode, bukan struktur database. Karena itu migrasi sebaiknya hanya **menambah** tabel/kolom; hapus kolom lama di rilis berikutnya. Untuk memulihkan data, pakai file di `BACKUP_PATH`.
+- Memakai SQLite: isi `DB_DATABASE` dengan path absolut di luar folder rilis (mis. `$DEPLOY_PATH/shared/database.sqlite`). Jangan menyalin file database saat aplikasi berjalan; pakai `php artisan app:backup-database`.
 
 ## Backup
 
-- Otomatis setiap hari pukul 02.00, terkompresi (`.sqlite.gz`), 14 terakhir disimpan. Hanya untuk SQLite.
-- Lokasinya diatur `BACKUP_PATH` (bawaan: `storage/app/private/backups`). **Arahkan ke folder yang disinkron ke cloud**, misalnya folder Google Drive/OneDrive di komputer server, agar backup tidak ikut hilang bila server rusak.
+- Otomatis setiap hari pukul 02.00 dan sebelum setiap migrasi saat deploy, terkompresi, 14 terakhir disimpan (30 saat deploy).
+  - SQLite: salinan file (`.sqlite.gz`).
+  - MySQL/MariaDB: `mysqldump` tanpa mengunci tabel (`.sql.gz`). Pulihkan dengan: `gunzip < file.sql.gz | mysql -u USER -p NAMA_DATABASE`
+- Lokasinya diatur `BACKUP_PATH` (bawaan: `storage/app/private/backups`). **Simpan juga salinannya di luar server**, misalnya folder yang disinkron ke cloud, agar backup tidak ikut hilang bila server rusak.
 - Manual: `php artisan app:backup-database --keep=14`.
 - Setiap pengguna bisa mengunduh seluruh datanya dari halaman **Akun**, dan memulihkannya lagi dari file yang sama.
 
@@ -166,7 +197,7 @@ Isi `ADMIN_EMAIL` dan set `ERROR_ALERTS=true`: setiap error di produksi dikirim 
 
 ## CI
 
-Setiap push ke `main` dan setiap pull request menjalankan Pint dan seluruh tes lewat GitHub Actions (`.github/workflows/tests.yml`).
+Setiap push ke `main` dan setiap pull request menjalankan Pint dan seluruh tes di **SQLite dan MySQL 8.4** lewat GitHub Actions (`.github/workflows/tests.yml`).
 
 ## Tes
 

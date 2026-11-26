@@ -143,7 +143,7 @@ new #[Title('Catatan')] class extends Component
     {
         $validated = $this->validate([
             'title' => ['required', 'string', 'max:150'],
-            'body' => ['nullable', 'string', 'max:20000'],
+            'body' => ['nullable', 'string', 'max:16000'],
             'goal_id' => ['nullable', Rule::exists('goals', 'id')->where('user_id', auth()->id())->whereNull('deleted_at')],
             'is_pinned' => ['boolean'],
             'uploads' => ['array', 'max:10'],
@@ -257,7 +257,11 @@ new #[Title('Catatan')] class extends Component
     </div>
 
     <x-sheet :show="$showForm" :title="$editingId ? 'Edit catatan' : 'Catatan baru'">
-        <form wire:submit="save" class="space-y-4">
+        {{-- Simpan dikunci selama file masih diunggah; kalau tidak, catatan tersimpan tanpa lampirannya. --}}
+        <form wire:submit="save" class="space-y-4" x-data="{ uploading: false }"
+            x-on:livewire-upload-start="uploading = true" x-on:livewire-upload-finish="uploading = false"
+            x-on:livewire-upload-error="uploading = false" x-on:livewire-upload-cancel="uploading = false"
+            x-on:submit.capture="if (uploading) { $event.preventDefault(); $event.stopImmediatePropagation(); }">
             <div>
                 <label class="label" for="note-title">Judul</label>
                 <input id="note-title" wire:model="title" class="input" placeholder="mis. Rumus cepat deret aritmetika" required>
@@ -332,7 +336,10 @@ new #[Title('Catatan')] class extends Component
                         <x-icon name="trash" class="size-4" />
                     </button>
                 @endif
-                <button class="btn btn-primary flex-1" wire:loading.attr="disabled">Simpan</button>
+                <button class="btn btn-primary flex-1" wire:loading.attr="disabled" x-bind:disabled="uploading">
+                    <span x-show="! uploading">Simpan</span>
+                    <span x-show="uploading" x-cloak>Menunggu unggahan…</span>
+                </button>
             </div>
         </form>
     </x-sheet>

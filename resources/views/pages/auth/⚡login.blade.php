@@ -19,12 +19,13 @@ new #[Layout('layouts::guest')] #[Title('Masuk')] class extends Component
     public function login(): void
     {
         $this->validate([
-            'email' => ['required', 'email'],
+            'email' => ['required', 'email', 'max:255'],
             'password' => ['required', 'string'],
         ]);
 
         // Dua lapis: per email+IP (tebak kata sandi satu akun) dan per IP (coba banyak akun sekaligus).
-        $throttleKey = Str::lower($this->email).'|'.request()->ip();
+        // Di-hash agar panjang kunci cache tetap, sepanjang apa pun email yang diketik.
+        $throttleKey = 'login|'.sha1(Str::lower($this->email).'|'.request()->ip());
         $ipThrottleKey = 'login-ip|'.request()->ip();
 
         foreach ([[$throttleKey, 5], [$ipThrottleKey, 20]] as [$key, $maxAttempts]) {

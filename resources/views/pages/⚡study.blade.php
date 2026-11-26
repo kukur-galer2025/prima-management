@@ -78,7 +78,7 @@ new #[Title('Fokus')] class extends Component
             'topic_id' => ['nullable', Rule::exists('topics', 'id')->where('goal_id', $this->goal_id)],
             'studied_on' => ['required', 'date', 'before_or_equal:today'],
             'minutes' => ['required', 'integer', 'min:1', 'max:1440'],
-            'score' => ['nullable', 'numeric', 'min:0', 'max:100000'],
+            'score' => ['nullable', 'numeric', 'min:0', 'max:99999'],
             'notes' => ['nullable', 'string', 'max:1000'],
         ], [], [
             'goal_id' => 'target',

@@ -14,7 +14,7 @@ new #[Layout('layouts::guest')] #[Title('Lupa kata sandi')] class extends Compon
 
     public function sendLink(): void
     {
-        $this->validate(['email' => ['required', 'email']]);
+        $this->validate(['email' => ['required', 'email', 'max:255']]);
 
         // Batasi per IP agar form ini tidak dipakai untuk membanjiri kotak masuk orang lain.
         $throttleKey = 'password-reset|'.request()->ip();

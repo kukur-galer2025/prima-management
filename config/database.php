@@ -19,6 +19,9 @@ return [
 
     'default' => env('DB_CONNECTION', 'sqlite'),
 
+    // Lokasi mysqldump / mariadb-dump untuk backup; kosong = dicari otomatis di PATH.
+    'dump_binary' => env('DB_DUMP_BINARY'),
+
     /*
     |--------------------------------------------------------------------------
     | Database Connections

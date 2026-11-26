@@ -9,6 +9,20 @@ jobs:
     tests:
         runs-on: ubuntu-latest
 
+        strategy:
+            fail-fast: false
+            matrix:
+                database: [sqlite, mysql]
+
+        services:
+            mysql:
+                image: mysql:8.4
+                env:
+                    MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+                    MYSQL_DATABASE: prima_test
+                ports: ['3306:3306']
+                options: --health-cmd="mysqladmin ping" --health-interval=5s --health-timeout=5s --health-retries=20
+
         steps:
             - uses: actions/checkout@v4
 
@@ -16,7 +30,7 @@ jobs:
               uses: shivammathur/setup-php@v2
               with:
                   php-version: '8.4'
-                  extensions: mbstring, pdo_sqlite, openssl, zlib, fileinfo
+                  extensions: mbstring, pdo_sqlite, pdo_mysql, openssl, zlib, fileinfo
                   coverage: none
 
             - name: Setup Node
@@ -41,5 +55,16 @@ jobs:
             - name: Check code style
               run: vendor/bin/pint --test
 
-            - name: Run tests
+            - name: Run tests (SQLite)
+              if: matrix.database == 'sqlite'
               run: php artisan test --compact
+
+            - name: Run tests (MySQL)
+              if: matrix.database == 'mysql'
+              run: php artisan test --compact
+              env:
+                  DB_CONNECTION: mysql
+                  DB_HOST: 127.0.0.1
+                  DB_DATABASE: prima_test
+                  DB_USERNAME: root
+                  DB_PASSWORD: ''

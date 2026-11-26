@@ -7,6 +7,7 @@ use App\Models\User;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 
 /**
  * Pemakaian anggaran bulan berjalan (per kategori dan total) beserta peringatan 80% / 100%.
@@ -17,7 +18,7 @@ class BudgetMonitor
     public const THRESHOLDS = [100, 80];
 
     /**
-     * @return Collection<int, array{key: string, label: string, budget: int, spent: int, percent: int}>
+     * @return Collection<int, array{id: int|string, key: string, label: string, budget: int, spent: int, percent: int}>
      */
     public function usage(User $user, ?CarbonInterface $month = null): Collection
     {
@@ -29,14 +30,17 @@ class BudgetMonitor
             ->whereDate('occurred_on', '<=', $start->endOfMonth())
             ->groupBy('category')
             ->selectRaw('category, sum(amount) as total')
-            ->pluck('total', 'category')
-            ->map(fn ($total) => (int) $total);
+            ->get()
+            // Disatukan tanpa peka huruf besar/kecil: MySQL menganggap "Makan" dan "makan" sama, SQLite tidak.
+            ->groupBy(fn ($row) => Str::lower($row->category))
+            ->map(fn (Collection $rows) => (int) $rows->sum(fn ($row) => (int) $row->total));
 
         $rows = $user->budgets()->orderBy('category')->get()->map(fn ($budget) => $this->row(
             'category:'.$budget->category,
             'Anggaran '.$budget->category,
             (int) $budget->amount,
-            (int) ($spent[$budget->category] ?? 0),
+            (int) ($spent[Str::lower($budget->category)] ?? 0),
+            $budget->id,
         ));
 
         if ($user->monthly_budget) {
@@ -73,7 +77,7 @@ class BudgetMonitor
                 $over = $row['spent'] - $row['budget'];
 
                 return [
-                    'key' => "budget:{$row['key']}:{$now->format('Y-m')}:{$level}",
+                    'key' => "budget:{$row['id']}:{$now->format('Y-m')}:{$level}",
                     'title' => $level === 100 ? "⚠️ {$row['label']} terlampaui" : "{$row['label']} sudah {$row['percent']}%",
                     'body' => Transaction::formatRupiah($row['spent']).' dari '.Transaction::formatRupiah($row['budget']).' bulan ini. '
                         .($over >= 0 ? 'Lewat '.Transaction::formatRupiah($over).'.' : 'Sisa '.Transaction::formatRupiah(-$over).'.'),
@@ -85,11 +89,13 @@ class BudgetMonitor
     }
 
     /**
-     * @return array{key: string, label: string, budget: int, spent: int, percent: int}
+     * @return array{id: int|string, key: string, label: string, budget: int, spent: int, percent: int}
      */
-    private function row(string $key, string $label, int $budget, int $spent): array
+    private function row(string $key, string $label, int $budget, int $spent, int|string $id = 'total'): array
     {
         return [
+            // Dipakai di kunci pengingat; id lebih aman daripada nama karena MySQL menganggap semua emoji sama.
+            'id' => $id,
             'key' => $key,
             'label' => $label,
             'budget' => $budget,

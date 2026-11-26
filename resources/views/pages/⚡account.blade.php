@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Services\Telegram;
 use App\Services\DataExporter;
 use App\Services\DataImporter;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Auth;
 use App\Services\Reminders;
 use App\Services\WebPush;
@@ -64,6 +65,12 @@ new #[Title('Akun')] class extends Component
             $counts = app(DataImporter::class)->import(auth()->user(), $data, $this->importMode === 'replace');
         } catch (InvalidArgumentException $exception) {
             $this->addError('importFile', $exception->getMessage());
+
+            return;
+        } catch (QueryException $exception) {
+            // Seluruh impor dibatalkan (transaksi); data lama tidak berubah.
+            report($exception);
+            $this->addError('importFile', 'Isi file tidak sesuai (ada nilai yang terlalu panjang atau salah format). Tidak ada data yang diubah.');
 
             return;
         }

@@ -2,6 +2,7 @@
 
 use App\Models\RecurringTransaction;
 use App\Models\User;
+use App\Services\DatabaseBackup;
 use App\Services\Preflight;
 use App\Services\Reminders;
 use App\Services\Telegram;
@@ -10,11 +11,9 @@ use Database\Seeders\StarterGoalsSeeder;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 
 use function Laravel\Prompts\password;
 use function Laravel\Prompts\text;
@@ -42,37 +41,20 @@ Artisan::command('app:create-user {--with-goals : Isi target awal} {--admin : Ja
     $this->info("Akun {$email} siap dipakai.");
 })->purpose('Buat / perbarui akun untuk login ke Prima Management');
 
-Artisan::command('app:backup-database {--keep=14 : Jumlah backup terbaru yang disimpan}', function () {
-    $connection = DB::connection();
-
-    if ($connection->getDriverName() !== 'sqlite') {
-        $this->error('Backup otomatis hanya mendukung SQLite. Untuk MySQL/PostgreSQL gunakan backup dari penyedia database.');
+Artisan::command('app:backup-database {--keep=14 : Jumlah backup terbaru yang disimpan}', function (DatabaseBackup $backup) {
+    try {
+        $name = $backup->create((int) $this->option('keep'));
+    } catch (Throwable $exception) {
+        report($exception);
+        $this->error($exception->getMessage());
 
         return 1;
     }
 
-    // VACUUM INTO menghasilkan salinan yang konsisten walau aplikasi sedang menulis.
-    $temporary = storage_path('app/private/backup-'.Str::random(8).'.sqlite');
-    $connection->statement('VACUUM INTO ?', [$temporary]);
-
-    try {
-        $name = 'prima-management-'.now()->format('Ymd-His').'.sqlite.gz';
-        $disk = Storage::disk('backups');
-        $disk->put($name, gzencode((string) file_get_contents($temporary), 9));
-    } finally {
-        @unlink($temporary);
-    }
-
-    collect($disk->files())
-        ->filter(fn (string $file) => Str::startsWith($file, 'prima-management-') && Str::endsWith($file, ['.sqlite', '.sqlite.gz']))
-        ->sortDesc()
-        ->slice(max(1, (int) $this->option('keep')))
-        ->each(fn (string $file) => $disk->delete($file));
-
-    $this->info('Backup tersimpan: '.$disk->path($name));
+    $this->info('Backup tersimpan: '.Storage::disk('backups')->path($name));
 
     return 0;
-})->purpose('Cadangkan database SQLite (terkompresi) ke disk "backups" (atur lewat BACKUP_PATH)');
+})->purpose('Cadangkan database (SQLite/MySQL, terkompresi) ke disk "backups" (atur lewat BACKUP_PATH)');
 
 Artisan::command('app:send-reminders', function (Reminders $reminders) {
     $count = $reminders->dispatch(now());

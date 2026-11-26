@@ -23,7 +23,7 @@ class OfflineSessionSyncController extends Controller
             'sessions.*.topic_id' => ['nullable', 'integer'],
             'sessions.*.studied_on' => ['required', 'date', 'before_or_equal:today'],
             'sessions.*.minutes' => ['required', 'integer', 'min:1', 'max:1440'],
-            'sessions.*.score' => ['nullable', 'numeric', 'min:0', 'max:100000'],
+            'sessions.*.score' => ['nullable', 'numeric', 'min:0', 'max:99999'],
             'sessions.*.notes' => ['nullable', 'string', 'max:1000'],
         ]);
 

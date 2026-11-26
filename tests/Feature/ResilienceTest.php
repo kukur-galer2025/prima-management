@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\AdminActivity;
+use App\Models\Goal;
 use App\Models\PushSubscription;
 use App\Models\User;
 use App\Services\Preflight;
@@ -10,6 +12,7 @@ use App\Services\Telegram;
 use App\Services\TelegramCommands;
 use App\Services\WebPush;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -170,10 +173,36 @@ class ResilienceTest extends TestCase
     public function test_warm_up_compiles_every_page_and_release_header_is_sent(): void
     {
         $this->artisan('app:warm-up')->assertSuccessful()->expectsOutputToContain('halaman dikompilasi');
+        $this->assertTrue(config('view.check_cache_timestamps'), 'Bawaan tetap memeriksa waktu ubah (pengembangan)');
 
         $this->get(route('login'))->assertHeaderMissing('X-Release');
         config(['app.release' => '20261125']);
         $this->get(route('login'))->assertHeader('X-Release', '20261125');
+    }
+
+    public function test_oversized_values_never_cause_a_server_error(): void
+    {
+        config(['services.telegram.bot_token' => '1:A', 'services.telegram.bot_username' => 'Bot']);
+        $this->app->forgetInstance(Telegram::class);
+        Http::fake(fn () => Http::response(['ok' => true]));
+        $user = User::factory()->create(['telegram_chat_id' => '9']);
+
+        // Ringkasan pagi dengan banyak deadline jauh melebihi kolom body.
+        Goal::factory()->count(12)->for($user)->create(['name' => str_repeat('Target panjang ', 6), 'status' => 'active', 'deadline' => '2026-11-27']);
+        app(Reminders::class)->dispatch(Carbon::parse('2026-11-25 08:00'));
+        $this->assertSame(1, $user->reminders()->where('key', 'like', 'digest:%')->count());
+
+        Livewire::test('pages::auth.login')->set('email', str_repeat('a', 60).'@'.str_repeat('b.', 150).'id')->set('password', 'x')->call('login')->assertOk()->assertHasErrors('email');
+
+        $json = json_encode(['goals' => [['id' => 1, 'name' => str_repeat('x', 5000), 'icon' => str_repeat('y', 500)]]]);
+        Livewire::actingAs($user)->test('pages::account')
+            ->set('importFile', UploadedFile::fake()->createWithContent('b.json', $json))
+            ->call('importData')
+            ->assertOk();
+
+        $long = User::factory()->make(['name' => str_repeat('n', 100), 'email' => str_repeat('e', 240).'@contoh.id']);
+        AdminActivity::record($user, $long, 'deleted');
+        $this->assertDatabaseCount('admin_activities', 1);
     }
 
     private function useBrokenMailer(): void

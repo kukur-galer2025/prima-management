@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
 
 #[Fillable(['actor_id', 'actor_label', 'subject_id', 'subject_label', 'action', 'details'])]
 class AdminActivity extends Model
@@ -51,9 +52,9 @@ class AdminActivity extends Model
     {
         return self::query()->create([
             'actor_id' => $actor->id,
-            'actor_label' => $actor->name,
+            'actor_label' => Str::limit($actor->name, 250, ''),
             'subject_id' => $subject->exists ? $subject->id : null,
-            'subject_label' => $subject->name.' <'.$subject->email.'>',
+            'subject_label' => Str::limit($subject->name.' <'.$subject->email.'>', 250),
             'action' => $action,
             'details' => $details ?: null,
         ]);

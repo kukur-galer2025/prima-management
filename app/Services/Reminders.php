@@ -6,6 +6,7 @@ use App\Models\Reminder;
 use App\Models\ScheduleSlot;
 use App\Models\User;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Str;
 use Throwable;
 
 /**
@@ -68,7 +69,12 @@ class Reminders
     private function dispatchTo(User $user, CarbonInterface $now): int
     {
         $newReminders = collect($this->dueFor($user, $now))
-            ->map(fn (array $reminder) => $user->reminders()->firstOrCreate(['key' => $reminder['key']], $reminder))
+            ->map(fn (array $reminder) => $user->reminders()->firstOrCreate(['key' => $reminder['key']], [
+                ...$reminder,
+                // Sesuai lebar kolom; MySQL menolak teks yang kepanjangan.
+                'title' => Str::limit($reminder['title'], 250),
+                'body' => Str::limit($reminder['body'], 490),
+            ]))
             ->filter(fn (Reminder $reminder) => $reminder->wasRecentlyCreated);
 
         if ($newReminders->isNotEmpty()) {

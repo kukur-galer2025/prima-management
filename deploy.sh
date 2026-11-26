@@ -44,7 +44,8 @@ trap 'fail "langkah di baris $LINENO"' ERR
 
 # Ganti symlink secara atomik: pengunjung selalu melihat rilis lama atau rilis baru, tidak pernah kosong.
 activate() {
-    ln -s "$1" "$CURRENT.new"
+    # -sfn: sisa current.new dari deploy yang terputus ditimpa, bukan diikuti ke dalam foldernya.
+    ln -sfn "$1" "$CURRENT.new"
     mv -T "$CURRENT.new" "$CURRENT"
     if [ -n "$RELOAD_COMMAND" ]; then bash -c "$RELOAD_COMMAND"; fi
 }
@@ -73,7 +74,10 @@ healthy() {
 
 command -v "$PHP_BIN" >/dev/null || fail "PHP tidak ditemukan ($PHP_BIN)"
 "$PHP_BIN" -r 'exit(PHP_VERSION_ID >= 80401 ? 0 : 1);'     || fail "butuh PHP 8.4+, yang terpakai $("$PHP_BIN" -r 'echo PHP_VERSION;'). Arahkan PHP_BIN ke PHP 8.4, mis. PHP_BIN=/usr/bin/php8.4"
-MISSING=$("$PHP_BIN" -r 'echo implode(" ", array_filter(["ctype", "curl", "dom", "fileinfo", "filter", "mbstring", "openssl", "pdo_sqlite", "session", "tokenizer", "xml", "zlib"], fn ($e) => ! extension_loaded($e)));')
+[ -f "$SHARED/.env" ] || fail "buat dulu $SHARED/.env (contoh di README bagian Deploy)"
+DB_EXTENSION=$(sed -n 's/^DB_CONNECTION=//p' "$SHARED/.env" | tr -d '"\r' | tail -n 1)
+case "$DB_EXTENSION" in mysql|mariadb) DB_EXTENSION=mysql ;; pgsql) ;; *) DB_EXTENSION=sqlite ;; esac
+MISSING=$("$PHP_BIN" -r 'echo implode(" ", array_filter(["ctype", "curl", "dom", "fileinfo", "filter", "mbstring", "openssl", "pdo_'"$DB_EXTENSION"'", "session", "tokenizer", "xml", "zlib"], fn ($e) => ! extension_loaded($e)));')
 [ -z "$MISSING" ] || fail "ekstensi PHP belum aktif: $MISSING"
 for tool in git npm curl; do command -v "$tool" >/dev/null || fail "$tool belum terpasang"; done
 if [ -f "$COMPOSER_BIN" ]; then COMPOSER_FILE=$COMPOSER_BIN; else COMPOSER_FILE=$(command -v "$COMPOSER_BIN" || true); fi
@@ -133,7 +137,10 @@ if [ "$DB_DRIVER" = sqlite ]; then
     [ -f "$DB_FILE" ] || { [ -z "$PREVIOUS" ] && touch "$DB_FILE"; } || fail "database $DB_FILE tidak ditemukan"
 fi
 
-if [ "$DB_DRIVER" = sqlite ] && [ -s "$DB_FILE" ]; then
+"$PHP_BIN" artisan tinker --execute="try { DB::connection()->getPdo(); echo 'tersambung'; } catch (Throwable \$e) { echo \$e->getMessage(); }" | grep -q tersambung \
+    || fail "tidak bisa tersambung ke database; periksa bagian DB_ di $SHARED/.env"
+
+if "$PHP_BIN" artisan tinker --execute="echo Schema::hasTable('users') ? 'berisi' : 'kosong';" | grep -q berisi; then
     say "Mencadangkan database sebelum migrasi"
     "$PHP_BIN" artisan app:backup-database --keep=30
 fi
@@ -182,9 +189,13 @@ fi
 
 "$PHP_BIN" artisan queue:restart --quiet || true
 
-say "Membersihkan rilis lama (simpan $KEEP_RELEASES)"
-ls -1d "$RELEASES"/*/ | sed 's:/$::' | sort | head -n -"$KEEP_RELEASES" | while read -r old; do
-    # Yang baru saja aktif (kurang dari 10 menit) dibiarkan karena mungkin masih dipakai proses PHP.
+say "Membersihkan rilis lama (simpan $KEEP_RELEASES rilis sehat)"
+# Rilis gagal dibuang lebih dulu, supaya yang disimpan benar-benar bisa dipakai untuk rollback.
+# Yang berumur < 10 menit dibiarkan karena mungkin masih dipakai proses PHP.
+{
+    for dir in "$RELEASES"/*/; do dir=${dir%/}; [ -e "$dir/FAILED" ] && echo "$dir"; done
+    for dir in "$RELEASES"/*/; do dir=${dir%/}; [ -e "$dir/FAILED" ] || echo "$dir"; done | sort | head -n -"$KEEP_RELEASES"
+} | while read -r old; do
     if [ -n "$(find "$old" -maxdepth 0 -mmin -10)" ]; then continue; fi
     case "$old" in "$RELEASE"|"$PREVIOUS") ;; *) rm -rf "$old" ;; esac
 done

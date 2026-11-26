@@ -40,6 +40,7 @@ class Preflight
             $check(is_writable(storage_path($folder)), "storage/{$folder} bisa ditulis", "storage/{$folder} tidak bisa ditulis oleh PHP");
         }
 
+        $check(! config('view.check_cache_timestamps'), 'View tidak dikompilasi ulang saat situs berjalan', 'Isi VIEW_CHECK_CACHE_TIMESTAMPS=false (view sudah dikompilasi saat deploy)', 'warning');
         $check((bool) config('session.secure'), 'Cookie sesi hanya lewat https', 'SESSION_SECURE_COOKIE=true belum diatur', 'warning');
         $check(! in_array(config('mail.default'), ['log', 'array'], true), 'SMTP diatur', 'MAIL_MAILER masih "'.config('mail.default').'": undangan & lupa sandi tidak terkirim', 'warning');
         $check(filled(config('services.webpush.public_key')), 'Kunci VAPID terisi', 'Kunci VAPID kosong: notifikasi push tidak aktif', 'warning');
@@ -64,6 +65,10 @@ class Preflight
 
             if (str_contains(Artisan::output(), 'Pending')) {
                 return [['level' => 'error', 'message' => 'Ada migrasi yang belum dijalankan. Jalankan: php artisan migrate --force']];
+            }
+
+            if (in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true) && ! app(DatabaseBackup::class)->dumpBinary()) {
+                return [['level' => 'error', 'message' => 'mysqldump tidak ditemukan: backup tidak bisa jalan. Pasang mysql-client atau isi DB_DUMP_BINARY']];
             }
 
             $results = [['level' => 'ok', 'message' => 'Database tersambung & skema terbaru ('.DB::connection()->getDriverName().')']];

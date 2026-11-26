@@ -60,7 +60,7 @@ class DashboardAndAlertsTest extends TestCase
     {
         $this->travelTo(Carbon::parse('2026-11-25 10:00'));
         $user = User::factory()->create(['monthly_budget' => 2000000]);
-        $user->budgets()->create(['category' => 'Makan', 'amount' => 1000000]);
+        $budget = $user->budgets()->create(['category' => 'Makan', 'amount' => 1000000]);
         Transaction::factory()->for($user)->create(['category' => 'Makan', 'amount' => 850000, 'occurred_on' => '2026-11-20']);
         Transaction::factory()->for($user)->create(['category' => 'Makan', 'amount' => 900000, 'occurred_on' => '2026-10-20']);
 
@@ -69,12 +69,12 @@ class DashboardAndAlertsTest extends TestCase
         $this->assertSame(42, $usage['total']['percent']);
 
         $alerts = app(BudgetMonitor::class)->alerts($user, now());
-        $this->assertSame(['budget:category:Makan:2026-11:80'], array_column($alerts, 'key'));
+        $this->assertSame(["budget:{$budget->id}:2026-11:80"], array_column($alerts, 'key'));
         $this->assertStringContainsString('Sisa Rp 150.000', $alerts[0]['body']);
 
-        Transaction::factory()->for($user)->create(['category' => 'Makan', 'amount' => 200000, 'occurred_on' => '2026-11-25']);
+        Transaction::factory()->for($user)->create(['category' => 'makan', 'amount' => 200000, 'occurred_on' => '2026-11-25']);
         $alerts = app(BudgetMonitor::class)->alerts($user, now());
-        $this->assertSame('budget:category:Makan:2026-11:100', $alerts[0]['key']);
+        $this->assertSame("budget:{$budget->id}:2026-11:100", $alerts[0]['key'], 'Huruf besar/kecil kategori tidak dibedakan');
         $this->assertStringContainsString('terlampaui', $alerts[0]['title']);
 
         $this->actingAs($user)->get(route('dashboard'))->assertSee('Anggaran Makan terlampaui');
